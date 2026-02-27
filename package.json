@@ -1,6 +1,6 @@
 {
   "name": "digital-pm-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Digital twin product manager MCP server — populates NotebookLM with codebase summaries, market research, and user feedback so Claude Code can consult it as a senior PM.",
   "type": "module",
   "bin": {
@@ -35,6 +35,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "patchright": "^1.48.2",
     "zod": "^3.25.0"
   },
   "repository": {

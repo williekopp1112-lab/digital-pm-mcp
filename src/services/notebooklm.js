@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
+import { addTextSource as _addTextSource, addUrlSources as _addUrlSources } from './browser-source.js';
 
 const HANDSHAKE_TIMEOUT_MS = 15_000;
 const TOOL_TIMEOUT_MS      = 120_000; // Browser automation can be slow
@@ -28,7 +29,7 @@ function readRpcResponse(rl, timeoutMs = TOOL_TIMEOUT_MS) {
     );
     const handler = (line) => {
       const trimmed = line.trim();
-      if (!trimmed) return; // skip blank lines (matches willieOS mcp.rs behavior)
+      if (!trimmed) return;
       clearTimeout(timer);
       rl.removeListener('line', handler);
       try {
@@ -41,37 +42,11 @@ function readRpcResponse(rl, timeoutMs = TOOL_TIMEOUT_MS) {
   });
 }
 
-// ── Injection formatter ──────────────────────────────────────────────────────
-
-/**
- * Wraps arbitrary content in a labeled injection envelope that NotebookLM stores
- * permanently in the notebook's conversation history.
- */
-function buildInjectionMessage(label, content) {
-  const date = new Date().toISOString().split('T')[0];
-  return [
-    `[DIGITAL PM — ${label.toUpperCase()} — ${date}]`,
-    ``,
-    `The following information is being permanently recorded into this notebook's`,
-    `knowledge base by the digital-pm-mcp automation system. Please acknowledge receipt`,
-    `and confirm it is stored for future queries.`,
-    ``,
-    `---`,
-    ``,
-    content,
-    ``,
-    `---`,
-    `End of digital-pm-mcp ${label} injection.`,
-  ].join('\n');
-}
-
 // ── Main subprocess client ───────────────────────────────────────────────────
 
 /**
  * Spawns notebooklm-mcp as a subprocess, performs the MCP handshake,
  * calls a tool, and returns the text result.
- *
- * Ported from willieOS src-tauri/src/mcp.rs (run_mcp_session_owned).
  *
  * @param {string} toolName  - e.g. 'ask_question'
  * @param {object} toolArgs  - e.g. { question: '...', notebook_url: '...' }
@@ -80,19 +55,16 @@ function buildInjectionMessage(label, content) {
 export async function callNotebookLM(toolName, toolArgs) {
   const child = spawn('npx', ['notebooklm-mcp@latest'], {
     env:   { ...process.env, PATH: getAugmentedPath() },
-    stdio: ['pipe', 'pipe', 'ignore'], // ignore stderr — notebooklm-mcp logs heavily to it
+    stdio: ['pipe', 'pipe', 'ignore'],
     shell: false,
   });
 
-  const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  const rl      = createInterface({ input: child.stdout, crlfDelay: Infinity });
   const cleanup = () => { try { child.kill(); } catch { /* ignore */ } };
 
   try {
-    // ── 1. Initialize ──────────────────────────────────────────────────────
     sendRpc(child.stdin, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
+      jsonrpc: '2.0', id: 1, method: 'initialize',
       params: {
         protocolVersion: '2024-11-05',
         capabilities: {},
@@ -101,37 +73,21 @@ export async function callNotebookLM(toolName, toolArgs) {
     });
 
     const initResp = await readRpcResponse(rl, HANDSHAKE_TIMEOUT_MS);
-    if (initResp.error) {
-      throw new Error(`MCP initialize failed: ${JSON.stringify(initResp.error)}`);
-    }
+    if (initResp.error) throw new Error(`MCP initialize failed: ${JSON.stringify(initResp.error)}`);
 
-    // ── 2. Send initialized notification (NO id — it's a notification) ────
-    sendRpc(child.stdin, {
-      jsonrpc: '2.0',
-      method: 'notifications/initialized',
-      params: {},
-    });
+    sendRpc(child.stdin, { jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
 
-    // ── 3. Call the tool ───────────────────────────────────────────────────
     sendRpc(child.stdin, {
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'tools/call',
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
       params: { name: toolName, arguments: toolArgs },
     });
 
     const toolResp = await readRpcResponse(rl, TOOL_TIMEOUT_MS);
-    if (toolResp.error) {
-      throw new Error(`tools/call error: ${JSON.stringify(toolResp.error)}`);
-    }
+    if (toolResp.error) throw new Error(`tools/call error: ${JSON.stringify(toolResp.error)}`);
 
-    // ── 4. Extract text content ────────────────────────────────────────────
     const content = toolResp?.result?.content;
     if (Array.isArray(content)) {
-      return content
-        .filter(item => item.type === 'text')
-        .map(item => item.text)
-        .join('\n');
+      return content.filter(item => item.type === 'text').map(item => item.text).join('\n');
     }
     return JSON.stringify(toolResp?.result ?? toolResp);
 
@@ -141,21 +97,46 @@ export async function callNotebookLM(toolName, toolArgs) {
   }
 }
 
+// ── Source injection (browser automation) ────────────────────────────────────
+
 /**
- * Injects content into a NotebookLM notebook's permanent conversation history.
- * Uses ask_question as the write channel — NotebookLM stores all messages permanently.
+ * Adds a block of text as a permanent "Copied text" source in the notebook.
+ * This is the primary way to push codebase snapshots, feedback notes,
+ * and research summaries into NotebookLM as indexed, queryable knowledge.
  *
- * @param {string} label       - e.g. 'RESEARCH UPDATE', 'FEEDBACK NOTE', 'CODEBASE SYNC'
- * @param {string} content     - the markdown content to inject
- * @param {string} notebookUrl - the share URL of the notebook
- * @returns {Promise<void>}    - throws if injection fails
+ * @param {string} label       - Short title for the source (shown in sources panel)
+ * @param {string} content     - Markdown content to store
+ * @param {string} notebookUrl - NotebookLM notebook share URL
+ */
+export async function addTextSource(label, content, notebookUrl) {
+  process.stderr.write(`[digital-pm-mcp] Adding text source "${label}" to NotebookLM...\n`);
+  await _addTextSource(label, content, notebookUrl);
+  process.stderr.write(`[digital-pm-mcp] ✅ Text source "${label}" added.\n`);
+}
+
+/**
+ * Adds one or more URLs as permanent "Websites" sources in the notebook.
+ * NotebookLM fetches and indexes the full content at each URL.
+ * Use this for research results — adds the actual web pages as sources,
+ * not just summaries.
+ *
+ * @param {string[]} urls      - URLs to add as sources
+ * @param {string} notebookUrl - NotebookLM notebook share URL
+ */
+export async function addUrlSources(urls, notebookUrl) {
+  if (!urls || urls.length === 0) return;
+  process.stderr.write(`[digital-pm-mcp] Adding ${urls.length} URL source(s) to NotebookLM...\n`);
+  await _addUrlSources(urls, notebookUrl);
+  process.stderr.write(`[digital-pm-mcp] ✅ ${urls.length} URL source(s) added.\n`);
+}
+
+// ── Legacy alias (kept for any internal callers) ──────────────────────────────
+
+/**
+ * @deprecated Use addTextSource() instead.
+ * Previously injected content via the chat interface (ask_question).
+ * Now delegates to addTextSource for proper source creation.
  */
 export async function injectIntoNotebook(label, content, notebookUrl) {
-  const message = buildInjectionMessage(label, content);
-  process.stderr.write(`[digital-pm-mcp] Injecting ${label} into NotebookLM (browser automation — may take ~30s)...\n`);
-  await callNotebookLM('ask_question', {
-    question:     message,
-    notebook_url: notebookUrl,
-  });
-  process.stderr.write(`[digital-pm-mcp] ✅ ${label} injected successfully.\n`);
+  return addTextSource(label, content, notebookUrl);
 }

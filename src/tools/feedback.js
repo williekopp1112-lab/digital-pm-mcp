@@ -1,5 +1,5 @@
 import { readConfig, resolveProjectPath } from '../services/config.js';
-import { injectIntoNotebook }             from '../services/notebooklm.js';
+import { addTextSource }                  from '../services/notebooklm.js';
 
 const CATEGORY_LABELS = {
   feature:  '🛠 Feature Request',
@@ -38,7 +38,7 @@ export async function handleFeedback({ feedback, category = 'insight', project_p
   // ── Auto-inject into NotebookLM ──────────────────────────────────────────
   if (notebookUrl) {
     try {
-      await injectIntoNotebook('FEEDBACK NOTE', note, notebookUrl);
+      await addTextSource(`Feedback — ${label}`, note, notebookUrl);
       return {
         content: [{
           type: 'text',
