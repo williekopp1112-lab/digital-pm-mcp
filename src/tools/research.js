@@ -1,14 +1,15 @@
 import { readConfig, resolveProjectPath } from '../services/config.js';
-import { searchTopics } from '../services/research.js';
+import { searchTopics }                   from '../services/research.js';
+import { injectIntoNotebook }             from '../services/notebooklm.js';
 
 export async function handleResearch({ topics, project_path }) {
   const projectPath = resolveProjectPath(project_path);
+  const config      = await readConfig(projectPath);
 
-  // Resolve topics: use provided, or fall back to config
+  // ── Resolve topics ───────────────────────────────────────────────────────
   let resolvedTopics = topics && topics.length > 0 ? topics : null;
 
   if (!resolvedTopics) {
-    const config = await readConfig(projectPath);
     resolvedTopics = config?.research_topics ?? [];
   }
 
@@ -27,17 +28,80 @@ export async function handleResearch({ topics, project_path }) {
     };
   }
 
+  // ── Search ───────────────────────────────────────────────────────────────
   const results = await searchTopics(resolvedTopics);
 
-  const parts = [
-    `## 🔬 Research Results`,
-    ``,
-    `Found results for **${results.length}** topic(s).`,
-    ``,
-    `**Add these as "Website" sources in your NotebookLM notebook:**`,
-    `_(Click "+ Add sources" → "Website" and paste each URL)_`,
-    ``,
-  ];
+  // ── Format research as rich markdown ────────────────────────────────────
+  const researchMarkdown = formatResearchMarkdown(results, config?.project_name);
+
+  // ── Auto-inject into NotebookLM ──────────────────────────────────────────
+  const notebookUrl = config?.notebook_url ?? null;
+
+  if (notebookUrl) {
+    try {
+      await injectIntoNotebook('RESEARCH UPDATE', researchMarkdown, notebookUrl);
+      return {
+        content: [{
+          type: 'text',
+          text: [
+            `## 🔬 Research Results`,
+            ``,
+            `Found results for **${results.length}** topic(s).`,
+            ``,
+            `✅ **Automatically captured in your NotebookLM notebook** — no manual steps needed.`,
+            ``,
+            `---`,
+            ``,
+            researchMarkdown,
+          ].join('\n'),
+        }],
+      };
+    } catch (err) {
+      process.stderr.write(`[digital-pm-mcp] NotebookLM injection failed: ${err.message}\n`);
+      return {
+        content: [{
+          type: 'text',
+          text: [
+            `## 🔬 Research Results`,
+            ``,
+            `Found results for **${results.length}** topic(s).`,
+            ``,
+            `⚠️ **Could not auto-push to NotebookLM**: ${err.message}`,
+            `_(Is notebooklm-mcp authenticated? Run \`digitalPM_query\` to test the connection.)_`,
+            ``,
+            `---`,
+            ``,
+            researchMarkdown,
+          ].join('\n'),
+        }],
+      };
+    }
+  }
+
+  // No notebook configured yet
+  return {
+    content: [{
+      type: 'text',
+      text: [
+        `## 🔬 Research Results`,
+        ``,
+        `Found results for **${results.length}** topic(s).`,
+        ``,
+        `_(Run \`digitalPM_init(notebook_url="...")\` to enable auto-capture to NotebookLM.)_`,
+        ``,
+        `---`,
+        ``,
+        researchMarkdown,
+      ].join('\n'),
+    }],
+  };
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatResearchMarkdown(results, projectName) {
+  const parts = [];
+  if (projectName) parts.push(`**Project**: ${projectName}\n`);
 
   for (const { topic, results: topicResults } of results) {
     parts.push(`### ${topic}`);
@@ -48,5 +112,5 @@ export async function handleResearch({ topics, project_path }) {
     parts.push('');
   }
 
-  return { content: [{ type: 'text', text: parts.join('\n') }] };
+  return parts.join('\n');
 }

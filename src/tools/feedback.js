@@ -1,4 +1,5 @@
 import { readConfig, resolveProjectPath } from '../services/config.js';
+import { injectIntoNotebook }             from '../services/notebooklm.js';
 
 const CATEGORY_LABELS = {
   feature:  '🛠 Feature Request',
@@ -17,7 +18,8 @@ export async function handleFeedback({ feedback, category = 'insight', project_p
   const label       = CATEGORY_LABELS[category] ?? CATEGORY_LABELS.insight;
   const timestamp   = new Date().toISOString().replace('T', ' ').split('.')[0] + ' UTC';
 
-  const formattedNote = [
+  // ── Format note ──────────────────────────────────────────────────────────
+  const note = [
     `# ${label}: ${projectName}`,
     ``,
     `**Date**: ${timestamp}`,
@@ -33,21 +35,65 @@ export async function handleFeedback({ feedback, category = 'insight', project_p
     `_Captured by digital-pm-mcp_`,
   ].filter(l => l !== null).join('\n');
 
-  const parts = [
-    `## 📝 Feedback Captured`,
-    ``,
-    `**Category**: ${label}`,
-    `**Project**: ${projectName}`,
-    ``,
-    `**Add to NotebookLM:**`,
-    `1. Go to your notebook${notebookUrl ? `: ${notebookUrl}` : ' (run digitalPM_init first)'}`,
-    `2. Click **"+ Add sources"** → **"Copied text"**`,
-    `3. Paste the note below and click **Insert**`,
-    ``,
-    `---`,
-    ``,
-    formattedNote,
-  ];
+  // ── Auto-inject into NotebookLM ──────────────────────────────────────────
+  if (notebookUrl) {
+    try {
+      await injectIntoNotebook('FEEDBACK NOTE', note, notebookUrl);
+      return {
+        content: [{
+          type: 'text',
+          text: [
+            `## 📝 Feedback Captured`,
+            ``,
+            `**Category**: ${label}`,
+            `**Project**: ${projectName}`,
+            ``,
+            `✅ **Automatically captured in your NotebookLM notebook** — no manual steps needed.`,
+            ``,
+            `---`,
+            ``,
+            note,
+          ].join('\n'),
+        }],
+      };
+    } catch (err) {
+      process.stderr.write(`[digital-pm-mcp] NotebookLM injection failed: ${err.message}\n`);
+      return {
+        content: [{
+          type: 'text',
+          text: [
+            `## 📝 Feedback Captured`,
+            ``,
+            `**Category**: ${label}`,
+            `**Project**: ${projectName}`,
+            ``,
+            `⚠️ **Could not auto-push to NotebookLM**: ${err.message}`,
+            ``,
+            `---`,
+            ``,
+            note,
+          ].join('\n'),
+        }],
+      };
+    }
+  }
 
-  return { content: [{ type: 'text', text: parts.join('\n') }] };
+  // No notebook configured yet
+  return {
+    content: [{
+      type: 'text',
+      text: [
+        `## 📝 Feedback Captured`,
+        ``,
+        `**Category**: ${label}`,
+        `**Project**: ${projectName}`,
+        ``,
+        `_(Run \`digitalPM_init(notebook_url="...")\` to enable auto-capture to NotebookLM.)_`,
+        ``,
+        `---`,
+        ``,
+        note,
+      ].join('\n'),
+    }],
+  };
 }

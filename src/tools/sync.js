@@ -1,6 +1,7 @@
 import { readConfig, writeConfig, resolveProjectPath } from '../services/config.js';
-import { syncProject } from '../services/codebase.js';
-import { searchTopics } from '../services/research.js';
+import { syncProject }                                  from '../services/codebase.js';
+import { searchTopics }                                 from '../services/research.js';
+import { injectIntoNotebook }                           from '../services/notebooklm.js';
 
 export async function handleSync({ project_path, mode = 'both' }) {
   const projectPath = resolveProjectPath(project_path);
@@ -15,43 +16,74 @@ export async function handleSync({ project_path, mode = 'both' }) {
     };
   }
 
-  const parts = [`## 🔄 Digital PM Sync — ${config.project_name}\n`];
-  const updates = {};
+  const notebookUrl   = config.notebook_url ?? null;
+  const summaryParts  = [`## 🔄 Digital PM Sync — ${config.project_name}\n`];
+  const injectionJobs = []; // { label, content } — collected then pushed together
 
-  // ── Code sync ───────────────────────────────────────────────────────────────
+  // ── Code sync ─────────────────────────────────────────────────────────────
   if (mode === 'code' || mode === 'both') {
     const result = await syncProject(projectPath, config);
-    updates['sync.last_synced'] = result.lastSync;
-
-    parts.push(`### Updated Codebase Summary`);
-    parts.push(`Files analyzed: **${result.fileCount}** | Synced: \`${result.lastSync}\``);
-    parts.push(`\n**Add this to NotebookLM as a new "Copied text" source** (replaces the old summary):\n`);
-    parts.push(result.updatedSummary);
-    parts.push('\n');
-
-    // Update config
     await writeConfig(projectPath, { sync: { ...config.sync, last_synced: result.lastSync } });
+
+    summaryParts.push(`### Codebase Snapshot`);
+    summaryParts.push(`Files analyzed: **${result.fileCount}** | Synced: \`${result.lastSync}\``);
+    summaryParts.push('');
+
+    injectionJobs.push({ label: 'CODEBASE SYNC', content: result.updatedSummary });
   }
 
-  // ── Research sync ────────────────────────────────────────────────────────────
+  // ── Research sync ─────────────────────────────────────────────────────────
   if (mode === 'research' || mode === 'both') {
     const topics = config.research_topics ?? [];
     if (topics.length > 0) {
       const researchResults = await searchTopics(topics);
-      parts.push(`### Research Updates\n`);
-      parts.push(`**Add these as "Website" sources in NotebookLM:**\n`);
-      for (const { topic, results } of researchResults) {
-        parts.push(`#### ${topic}`);
-        for (const r of results) {
-          parts.push(`- [${r.title}](${r.url})`);
-          if (r.description) parts.push(`  _${r.description}_`);
-        }
-        parts.push('');
-      }
+
+      const researchMarkdown = formatResearchMarkdown(researchResults, config.project_name);
+      summaryParts.push(`### Research Updates`);
+      summaryParts.push(`Topics searched: **${topics.length}**`);
+      summaryParts.push('');
+
+      injectionJobs.push({ label: 'RESEARCH UPDATE', content: researchMarkdown });
     } else {
-      parts.push(`_No research topics configured. Add \`research_topics\` to \`.digitalpM.json\` or call \`digitalPM_research\` with explicit topics._`);
+      summaryParts.push(`_No research topics configured. Add \`research_topics\` to \`.digitalpM.json\`._`);
     }
   }
 
-  return { content: [{ type: 'text', text: parts.join('\n') }] };
+  // ── Auto-inject everything into NotebookLM ────────────────────────────────
+  const injectionResults = [];
+
+  if (notebookUrl && injectionJobs.length > 0) {
+    for (const job of injectionJobs) {
+      try {
+        await injectIntoNotebook(job.label, job.content, notebookUrl);
+        injectionResults.push(`✅ ${job.label} captured in NotebookLM`);
+      } catch (err) {
+        process.stderr.write(`[digital-pm-mcp] Injection failed for ${job.label}: ${err.message}\n`);
+        injectionResults.push(`⚠️ ${job.label} injection failed: ${err.message}`);
+      }
+    }
+    summaryParts.push(`### NotebookLM Auto-Capture`);
+    for (const r of injectionResults) summaryParts.push(r);
+    summaryParts.push('');
+  } else if (!notebookUrl) {
+    summaryParts.push(`_Run \`digitalPM_init(notebook_url="...")\` to enable auto-capture to NotebookLM._`);
+  }
+
+  return { content: [{ type: 'text', text: summaryParts.join('\n') }] };
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatResearchMarkdown(results, projectName) {
+  const parts = [];
+  if (projectName) parts.push(`**Project**: ${projectName}\n`);
+  for (const { topic, results: topicResults } of results) {
+    parts.push(`### ${topic}`);
+    for (const r of topicResults) {
+      parts.push(`- **[${r.title}](${r.url})**`);
+      if (r.description) parts.push(`  ${r.description}`);
+    }
+    parts.push('');
+  }
+  return parts.join('\n');
 }

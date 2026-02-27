@@ -41,6 +41,30 @@ function readRpcResponse(rl, timeoutMs = TOOL_TIMEOUT_MS) {
   });
 }
 
+// ── Injection formatter ──────────────────────────────────────────────────────
+
+/**
+ * Wraps arbitrary content in a labeled injection envelope that NotebookLM stores
+ * permanently in the notebook's conversation history.
+ */
+function buildInjectionMessage(label, content) {
+  const date = new Date().toISOString().split('T')[0];
+  return [
+    `[DIGITAL PM — ${label.toUpperCase()} — ${date}]`,
+    ``,
+    `The following information is being permanently recorded into this notebook's`,
+    `knowledge base by the digital-pm-mcp automation system. Please acknowledge receipt`,
+    `and confirm it is stored for future queries.`,
+    ``,
+    `---`,
+    ``,
+    content,
+    ``,
+    `---`,
+    `End of digital-pm-mcp ${label} injection.`,
+  ].join('\n');
+}
+
 // ── Main subprocess client ───────────────────────────────────────────────────
 
 /**
@@ -115,4 +139,23 @@ export async function callNotebookLM(toolName, toolArgs) {
     cleanup();
     rl.close();
   }
+}
+
+/**
+ * Injects content into a NotebookLM notebook's permanent conversation history.
+ * Uses ask_question as the write channel — NotebookLM stores all messages permanently.
+ *
+ * @param {string} label       - e.g. 'RESEARCH UPDATE', 'FEEDBACK NOTE', 'CODEBASE SYNC'
+ * @param {string} content     - the markdown content to inject
+ * @param {string} notebookUrl - the share URL of the notebook
+ * @returns {Promise<void>}    - throws if injection fails
+ */
+export async function injectIntoNotebook(label, content, notebookUrl) {
+  const message = buildInjectionMessage(label, content);
+  process.stderr.write(`[digital-pm-mcp] Injecting ${label} into NotebookLM (browser automation — may take ~30s)...\n`);
+  await callNotebookLM('ask_question', {
+    question:     message,
+    notebook_url: notebookUrl,
+  });
+  process.stderr.write(`[digital-pm-mcp] ✅ ${label} injected successfully.\n`);
 }
