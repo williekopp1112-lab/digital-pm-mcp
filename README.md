@@ -1,105 +1,153 @@
 # digital-pm-mcp
 
-A **digital twin product manager** MCP server for any codebase.
+> **Give Claude Code a senior product manager it can consult before answering your questions.**
 
-Connects Claude Code to a NotebookLM notebook populated with smart codebase summaries, competitive market research, and captured user feedback — so Claude can consult it as a senior PM when building your project.
+Most AI coding sessions are missing context. Claude knows how to write code, but it doesn't know *what to build next*, *who your competitors are*, or *what your users are actually complaining about*.
+
+`digital-pm-mcp` fixes that. It creates and maintains a [NotebookLM](https://notebooklm.google.com) notebook that acts as a living PM brain for your project — populated with your codebase architecture, competitive research, and captured user feedback. Claude Code consults it automatically when you ask strategic questions.
+
+---
+
+## The 30-Second Pitch
+
+```
+You:   "What's the most impactful feature I should build next?"
+
+Claude: [calls digitalPM_query]
+        → Checks your NotebookLM notebook (which knows your codebase,
+          your competitors, and your captured user feedback)
+        → Combines that with its own knowledge of your code
+        → Returns a prioritized recommendation grounded in real context
+```
+
+No more generic AI answers. Your notebook becomes smarter every time you:
+- Ship new code → `sync` updates the codebase snapshot
+- Hear from a user → `feedback` logs it as a permanent source
+- Want fresh intel → `research` adds real web sources NotebookLM can read
 
 ---
 
 ## What It Does
 
-| Tool | What it does |
-|------|-------------|
-| `digitalPM_init` | Analyzes your codebase and bootstraps the NotebookLM notebook |
-| `digitalPM_sync` | Re-analyzes the project and returns updated content to refresh the notebook |
-| `digitalPM_query` | Asks a PM question answered by your notebook (competitors, next features, architecture) |
-| `digitalPM_research` | Searches the web for competitive/market research and returns URLs to add as sources |
-| `digitalPM_feedback` | Formats user feedback, goals, or insights as structured PM notes for the notebook |
+| Say this to Claude Code | What fires | What happens |
+|---|---|---|
+| "Sync my digital PM" | `digitalPM_sync` | Adds codebase summary + all .md files as NotebookLM sources |
+| "My user reported a bug with the dashboard widgets" | `digitalPM_feedback` | Logs it as a permanent source in your notebook |
+| "Research competitors for our new AI features via digital PM" | `digitalPM_research` | Adds research URLs as real Website sources (NotebookLM fetches full content) |
+| "What should I build next based on market research?" | `digitalPM_query` | Queries your notebook and combines the answer with Claude's code knowledge |
+| "Initialize my digital PM" | `digitalPM_init` | Analyzes the codebase and bootstraps the whole system |
+
+You never type the function names. Just talk to Claude naturally.
+
+---
+
+## How Sources Actually Get Added
+
+Unlike tools that just inject text into a chat, `digital-pm-mcp` uses browser automation to add **real, permanent sources** to your NotebookLM notebook — the kind you'd add by clicking "+ Add sources" yourself.
+
+- **Research URLs** → added as **Website sources** (NotebookLM fetches and indexes the full page)
+- **Codebase summaries & .md files** → added as **Copied text sources**
+- **User feedback & insights** → added as **Copied text sources**
+
+This means your notebook is genuinely grounded in the content — it can cite sources, cross-reference them, and generate Audio Overviews, Mind Maps, and Study Guides from them.
 
 ---
 
 ## Requirements
 
 - **Node.js 18+**
-- **A Google account** with [NotebookLM](https://notebooklm.google.com) access
-- **[notebooklm-mcp](https://www.npmjs.com/package/notebooklm-mcp)** authenticated (for `digitalPM_query`)
+- **A Google account** with [NotebookLM](https://notebooklm.google.com) access (free)
+- **[notebooklm-mcp](https://www.npmjs.com/package/notebooklm-mcp)** installed and authenticated (handles Google login)
 
 ---
 
 ## Installation
 
-### 1. Add to Claude Code
+### 1. Install and authenticate notebooklm-mcp (one-time)
 
 ```bash
-claude mcp add digitalpm npx digital-pm-mcp@latest
+npx notebooklm-mcp@latest
+# Use the setup_auth tool to log in to your Google account
 ```
 
-### 2. Initialize for your project
+This handles all the browser auth that `digital-pm-mcp` will reuse.
+
+### 2. Add digital-pm-mcp to Claude Code
+
+```bash
+# For your current project only:
+claude mcp add digitalpm npx digital-pm-mcp@latest
+
+# Or user-wide (available in every project):
+claude mcp add --scope user digitalpm npx digital-pm-mcp@latest
+```
+
+### 3. Initialize for your project
 
 Open Claude Code in your project directory and say:
 
 > **"Initialize my digital PM for this project"**
 
 Claude will:
-1. Analyze your codebase (tech stack, architecture, key files)
-2. Generate a rich summary to paste into a new NotebookLM notebook
-3. Suggest competitive research queries
-4. Walk you through creating the notebook and adding sources
-5. Save `.digitalpM.json` to your project once you provide the notebook URL
+1. Scan your codebase (respects `.gitignore`, detects tech stack)
+2. Generate a rich architecture summary
+3. Suggest competitive research topics based on your stack
+4. Ask you to create a NotebookLM notebook and paste in the share URL
+5. Save `.digitalpM.json` to your project root
 
-### 3. Authenticate notebooklm-mcp (required for `digitalPM_query`)
-
-```bash
-npx notebooklm-mcp@latest
-# Then use the setup_auth tool to log in to Google
-```
+That's it. Your PM brain is live.
 
 ---
 
-## Example Usage
+## Example Conversations
 
-Once initialized, ask Claude Code natural questions:
+**Strategic planning:**
+> "Based on the codebase and market research, what's the most impactful feature I should build next?"
 
-```
-"What features should I build next in this project?"
-"How does my app compare to competitors in this space?"
-"Capture this feedback: users want keyboard shortcuts — category: feature"
-"Research the latest trends for Tauri desktop apps"
-"Sync my digital PM with the latest code changes"
-```
+**Logging feedback:**
+> "My beta user said the onboarding flow is confusing — they didn't understand what to do after signup. Log that as feedback."
+
+**Staying current:**
+> "We just shipped the new AI assistant feature. Sync the digital PM so the notebook reflects the latest code."
+
+**Competitive research:**
+> "Do some research on how other productivity apps handle recurring tasks and update our NotebookLM sources."
 
 ---
 
 ## How It Works
 
 ```
-Your Project
-    │
-    ▼
-digitalPM_init
-    │  Walks your codebase (respects .gitignore patterns)
-    │  Detects tech stack from package.json, file types
-    │  Generates rich markdown summary
-    │  Infers research topics
-    ▼
-NotebookLM Notebook  ◄──────────────────────────────────────────────┐
-    │  Codebase summary (architecture, components, data flow)        │
-    │  Market research (competitors, trends, community feedback)      │
-    │  User feedback (structured PM notes)                           │
-    ▼                                                                │
-digitalPM_query                                           digitalPM_research
-    │  Spawns notebooklm-mcp subprocess                 digitalPM_feedback
-    │  Routes question via JSON-RPC                     digitalPM_sync
-    │  Returns PM answer grounded in sources
-    ▼
-Claude Code gets PM-grade guidance
+Your Codebase
+     │
+     ▼
+digitalPM_init / digitalPM_sync
+     │  Walks files (respects .gitignore)
+     │  Detects tech stack, maps architecture
+     │  Finds all .md files (README, CLAUDE.md, CHANGELOG, docs/)
+     ▼
+Browser Automation (patchright)
+     │  Opens NotebookLM headlessly
+     │  Clicks "+ Add sources → Copied text / Websites"
+     │  Inserts each source individually
+     ▼
+NotebookLM Notebook  ◄──────────────────────────────────────┐
+     │  Codebase architecture + .md files                    │
+     │  Research URLs (full web content)                     │  digitalPM_research
+     │  User feedback & product insights                     │  digitalPM_feedback
+     ▼                                                       │
+digitalPM_query                                    ──────────┘
+     │  Asks your notebook a strategic question
+     │  Claude combines the answer with its own code context
+     ▼
+You get PM-grade guidance, grounded in your actual project
 ```
 
 ---
 
 ## Config File
 
-`.digitalpM.json` is created in your project root:
+`.digitalpM.json` is created in your project root on init:
 
 ```json
 {
@@ -108,41 +156,28 @@ Claude Code gets PM-grade guidance
   "description": "What the project does",
   "research_topics": [
     "React alternatives competitors 2026",
-    "Tauri vs Electron desktop app comparison 2026"
+    "AI productivity app trends 2026"
   ],
   "sync": {
     "mode": "on_demand",
     "last_synced": "2026-02-26T17:00:00Z"
-  },
-  "created_at": "2026-02-26T17:00:00Z"
+  }
 }
 ```
 
-> **Tip**: Add `.digitalpM.json` to `.gitignore` if your notebook URL is private.
+> Add `.digitalpM.json` to `.gitignore` if your notebook URL is private.
 
 ---
 
-## Updating the Notebook
-
-When you've made significant progress on the project, sync to keep the PM current:
+## Keeping the Notebook Fresh
 
 ```
-"Sync my digital PM"                    → updates both code + research
-"Sync my digital PM — code only"        → re-analyzes codebase only
-"Research new topics: AI agent tools"   → pulls in fresh research on-demand
+"Sync my digital PM"                  → updates code snapshot + research
+"Sync digital PM — code only"         → re-analyzes codebase only
+"Research new topics: AI agent tools" → pulls fresh research
 ```
 
----
-
-## Publishing a New Version
-
-```bash
-npm version patch   # or minor / major
-git push && git push --tags
-npm publish
-```
-
-Or use the GitHub Actions workflow for automated publishing (see `.github/workflows/release.yml`).
+A good habit: sync after any significant feature ship, so the PM context stays current.
 
 ---
 
@@ -151,32 +186,29 @@ Or use the GitHub Actions workflow for automated publishing (see `.github/workfl
 ```
 digital-pm-mcp/
 ├── bin/
-│   └── digital-pm-mcp.js       # CLI entry point (#!/usr/bin/env node)
+│   └── digital-pm-mcp.js        # CLI entry (npx target)
 ├── src/
-│   ├── index.js                 # McpServer setup, tool registration, stdio transport
+│   ├── index.js                  # MCP server, tool registration, stdio transport
 │   ├── tools/
-│   │   ├── init.js              # digitalPM_init (Phase A + B)
-│   │   ├── sync.js              # digitalPM_sync
-│   │   ├── query.js             # digitalPM_query
-│   │   ├── research.js          # digitalPM_research
-│   │   └── feedback.js          # digitalPM_feedback
+│   │   ├── init.js               # digitalPM_init
+│   │   ├── sync.js               # digitalPM_sync
+│   │   ├── query.js              # digitalPM_query
+│   │   ├── research.js           # digitalPM_research
+│   │   └── feedback.js           # digitalPM_feedback
 │   └── services/
-│       ├── config.js            # .digitalpM.json read/write
-│       ├── codebase.js          # Project analysis + summary generation
-│       ├── research.js          # DuckDuckGo HTML scraping (no API key)
-│       └── notebooklm.js        # notebooklm-mcp subprocess JSON-RPC client
-├── .github/
-│   └── workflows/
-│       └── release.yml          # Manual-trigger npm publish
-├── package.json
-└── README.md
+│       ├── browser-source.js     # Patchright automation — adds real NotebookLM sources
+│       ├── notebooklm.js         # Public API: addTextSource(), addUrlSources(), callNotebookLM()
+│       ├── codebase.js           # Project analysis + summary generation
+│       ├── research.js           # DuckDuckGo search (no API key needed)
+│       └── config.js             # .digitalpM.json read/write
+└── package.json
 ```
 
 ---
 
 ## Contributing
 
-PRs welcome. The codebase is intentionally dependency-light — only `@modelcontextprotocol/sdk` and `zod`.
+PRs welcome. Core dependencies: `@modelcontextprotocol/sdk`, `patchright`, and `zod`.
 
 ## License
 
