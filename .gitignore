@@ -1,0 +1,4 @@
+node_modules/
+.digitalpM.json
+*.log
+.DS_Store

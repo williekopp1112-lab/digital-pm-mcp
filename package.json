@@ -1,0 +1,48 @@
+{
+  "name": "digital-pm-mcp",
+  "version": "0.1.0",
+  "description": "Digital twin product manager MCP server — populates NotebookLM with codebase summaries, market research, and user feedback so Claude Code can consult it as a senior PM.",
+  "type": "module",
+  "bin": {
+    "digital-pm-mcp": "./bin/digital-pm-mcp.js"
+  },
+  "main": "./src/index.js",
+  "files": [
+    "src/",
+    "bin/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "start": "node bin/digital-pm-mcp.js",
+    "prepare": "chmod +x bin/digital-pm-mcp.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "notebooklm",
+    "ai",
+    "product-manager",
+    "digital-twin",
+    "claude",
+    "claude-code",
+    "codebase-analysis",
+    "model-context-protocol"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^3.25.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOURUSERNAME/digital-pm-mcp.git"
+  },
+  "homepage": "https://github.com/YOURUSERNAME/digital-pm-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/YOURUSERNAME/digital-pm-mcp/issues"
+  }
+}
