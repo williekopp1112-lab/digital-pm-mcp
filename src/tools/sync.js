@@ -2,6 +2,7 @@ import { readConfig, writeConfig, resolveProjectPath } from '../services/config.
 import { syncProject }                                  from '../services/codebase.js';
 import { searchTopics }                                 from '../services/research.js';
 import { addTextSource, addUrlSources }                 from '../services/notebooklm.js';
+import { patchTacticalSync }                            from '../services/roadmap.js';
 import fs                                               from 'fs/promises';
 import path                                             from 'path';
 
@@ -116,6 +117,19 @@ export async function handleSync({ project_path, mode = 'both' }) {
     summaryParts.push('');
   } else if (!notebookUrl) {
     summaryParts.push(`_Run \`digitalPM_init(notebook_url="...")\` to enable auto-capture to NotebookLM._`);
+  }
+
+  // ── Tactical ROADMAP.md patch ─────────────────────────────────────────────
+  // Update the "Last tactical sync" date so the roadmap always reflects reality.
+  try {
+    const patched = await patchTacticalSync(projectPath);
+    if (patched) {
+      summaryParts.push(`### ROADMAP.md`);
+      summaryParts.push(`✅ **Tactical sync date** updated in ROADMAP.md`);
+      summaryParts.push(`   _Check the Active Execution Board for items to move or close._`);
+    }
+  } catch (err) {
+    process.stderr.write(`[digital-pm-mcp] ROADMAP.md patch failed: ${err.message}\n`);
   }
 
   return { content: [{ type: 'text', text: summaryParts.join('\n') }] };

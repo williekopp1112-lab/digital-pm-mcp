@@ -7,10 +7,11 @@ import { handleSync }     from './tools/sync.js';
 import { handleQuery }    from './tools/query.js';
 import { handleResearch } from './tools/research.js';
 import { handleFeedback } from './tools/feedback.js';
+import { handlePlan }     from './tools/plan.js';
 
 const server = new McpServer({
   name: 'digital-pm-mcp',
-  version: '0.1.0',
+  version: '0.4.0',
 });
 
 // ── digitalPM_init ────────────────────────────────────────────────────────────
@@ -143,11 +144,41 @@ server.registerTool(
   handleFeedback
 );
 
+// ── digitalPM_plan ────────────────────────────────────────────────────────────
+server.registerTool(
+  'digitalPM_plan',
+  {
+    title: 'Get JIT Implementation Brief',
+    description: [
+      'Generates a Just-In-Time implementation brief for a specific feature by querying',
+      'the project\'s NotebookLM notebook.',
+      '',
+      'The brief includes:',
+      '  - Recommended technical approach for your stack',
+      '  - How top competitors implement this feature (and their gaps)',
+      '  - Potential pitfalls and gotchas to avoid',
+      '  - What would make your implementation stand out',
+      '  - Critical test cases to verify correctness',
+      '',
+      'Usage: Call this BEFORE starting any feature implementation.',
+      'After tests pass, mark the item [x] in ROADMAP.md and discard the brief.',
+      '',
+      'If the feature is not in ROADMAP.md, this tool will flag it so you can',
+      'update the Strategic Epics before coding (Pivot Research protocol).',
+    ].join('\n'),
+    inputSchema: {
+      feature:      z.string().describe('Feature name or description to generate an implementation brief for.'),
+      project_path: z.string().optional().describe('Project root path. Defaults to cwd.'),
+    },
+  },
+  handlePlan
+);
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write('[digital-pm-mcp] v0.1.0 started on stdio\n');
+  process.stderr.write('[digital-pm-mcp] v0.4.0 started on stdio\n');
 }
 
 runServer().catch((err) => {

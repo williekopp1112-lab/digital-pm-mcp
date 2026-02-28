@@ -2,6 +2,25 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.4.0] — 2026-02-27
+
+### Added
+- `digitalPM_plan` — JIT implementation brief tool: queries NotebookLM for technical approach, competitive edge cases, pitfalls, differentiation, and test checklist before you write a line of code
+- `src/services/roadmap.js` — Living Execution Graph service with generation, file I/O, and surgical patching
+- `ROADMAP.md` auto-generated during `digitalPM_init` with five sections: Contextual North Star, Strategic Epics, Active Execution Board (state machine), Feedback Loop (blocker zone), Metadata
+- Competitive landscape table auto-built from DuckDuckGo research results
+- Strategic Epics auto-derived from detected tech stack with research insights from NotebookLM
+- `[BLOCKER: Research Shift]` zone in ROADMAP.md — halts execution when market data contradicts the plan
+- Sprint state machine: `[ ]` planned → `[/]` in progress → `[x]` verified (tests required)
+
+### Changed
+- `digitalPM_init` now runs market + competitive research automatically (competitive, pricing, user pain points)
+- `digitalPM_init` adds ROADMAP.md itself as a NotebookLM source after generation
+- `digitalPM_sync` patches ROADMAP.md "Last tactical sync" date after every run
+- Research topics auto-enriched with competitive/pricing queries during init
+
+---
+
 ## [0.3.2] — 2026-02-27
 
 ### Added
