@@ -8,6 +8,23 @@ import { handleQuery }    from './tools/query.js';
 import { handleResearch } from './tools/research.js';
 import { handleFeedback } from './tools/feedback.js';
 import { handlePlan }     from './tools/plan.js';
+import { checkForUpdates, LOCAL_VERSION, withUpdateBanner } from './services/version-check.js';
+
+// ── Wrap any tool handler so the first response in a session includes
+//    the update banner if a newer version is available. ─────────────────────────
+function wrap(handler) {
+  return async (args) => {
+    const result = await handler(args);
+    // MCP tool results have shape { content: [{ type: 'text', text: '...' }] }
+    const banner = withUpdateBanner(null);
+    if (!banner) return result;
+    // Prepend banner to the first text block
+    const content = result?.content ?? [];
+    const first = content.find(c => c.type === 'text');
+    if (first) first.text = `${banner}\n\n---\n\n${first.text}`;
+    return result;
+  };
+}
 
 const server = new McpServer({
   name: 'digital-pm-mcp',
@@ -38,7 +55,7 @@ server.registerTool(
       research_topics:  z.array(z.string()).optional().describe('Research topics (competitors, trends). Auto-inferred from codebase if omitted.'),
     },
   },
-  handleInit
+  wrap(handleInit)
 );
 
 // ── digitalPM_sync ────────────────────────────────────────────────────────────
@@ -62,7 +79,7 @@ server.registerTool(
       mode:         z.enum(['code', 'research', 'both']).optional().describe('What to sync. Default: "both".'),
     },
   },
-  handleSync
+  wrap(handleSync)
 );
 
 // ── digitalPM_query ───────────────────────────────────────────────────────────
@@ -90,7 +107,7 @@ server.registerTool(
       project_path: z.string().optional().describe('Project root path. Defaults to cwd.'),
     },
   },
-  handleQuery
+  wrap(handleQuery)
 );
 
 // ── digitalPM_research ────────────────────────────────────────────────────────
@@ -113,7 +130,7 @@ server.registerTool(
       project_path: z.string().optional().describe('Project root path. Defaults to cwd.'),
     },
   },
-  handleResearch
+  wrap(handleResearch)
 );
 
 // ── digitalPM_feedback ────────────────────────────────────────────────────────
@@ -141,7 +158,7 @@ server.registerTool(
       source:       z.string().optional().describe('Where this feedback came from, e.g. "user interview", "GitHub issue #42".'),
     },
   },
-  handleFeedback
+  wrap(handleFeedback)
 );
 
 // ── digitalPM_plan ────────────────────────────────────────────────────────────
@@ -171,14 +188,16 @@ server.registerTool(
       project_path: z.string().optional().describe('Project root path. Defaults to cwd.'),
     },
   },
-  handlePlan
+  wrap(handlePlan)
 );
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write('[digital-pm-mcp] v0.4.1 started on stdio\n');
+  process.stderr.write(`[digital-pm-mcp] v${LOCAL_VERSION} started on stdio\n`); // LOCAL_VERSION reads package.json
+  // Fire-and-forget npm version check — never blocks startup
+  checkForUpdates().catch(() => {});
 }
 
 runServer().catch((err) => {

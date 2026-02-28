@@ -2,6 +2,25 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.4.2] — 2026-02-28
+
+### Added
+- **Version check at startup** — checks npm for a newer version on launch; if one exists, prepends an update banner to the first tool response of the session with exact upgrade instructions
+- **`src/services/version-check.js`** — lightweight checker using `fetch()` against the npm registry with a 5s timeout; never blocks startup
+- **Handler wrapper** in `index.js` — all 6 tool handlers auto-prepend the update banner without individual file changes
+
+### Updated
+- README step 3 now reflects fully automated init (no manual notebook creation / paste step)
+- README "Staying Updated" section with exact `rm -rf ~/.npm/_npx` + restart instructions
+
+### Fixed
+- Version string in startup log now reads dynamically from `package.json` (no hardcoded string to forget)
+- `createNotebook()` now skips the intermediate `/notebook/creating` URL when polling for the real UUID
+- `openAddSourcesDialog()` detects auto-open dialog on new empty notebooks (avoids clicking a blocked button)
+- `withNotebookPage()` adds 1.5s animation settle wait after page load
+
+---
+
 ## [0.4.1] — 2026-02-27
 
 ### Fixed

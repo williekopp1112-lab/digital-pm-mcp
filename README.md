@@ -106,14 +106,37 @@ Open Claude Code in your project directory and say:
 
 > **"Initialize my digital PM for this project"**
 
-Claude will:
+Claude will fully automate:
 1. Scan your codebase (respects `.gitignore`, detects tech stack)
-2. Generate a rich architecture summary
-3. Suggest competitive research topics based on your stack
-4. Ask you to create a NotebookLM notebook and paste in the share URL
-5. Save `.digitalpM.json` to your project root
+2. Auto-create a new NotebookLM notebook via browser automation
+3. Add a rich codebase architecture summary as a source
+4. Run competitive web research and add URL sources
+5. Generate a `ROADMAP.md` (Living Execution Graph) in your project root
+6. Save `.digitalpM.json` to your project root
 
-That's it. Your PM brain is live.
+No manual pasting. No notebook setup. That's it — your PM brain is live.
+
+---
+
+## Staying Updated
+
+`digital-pm-mcp` checks npm for updates at startup. If you're running an older version, you'll see a banner like:
+
+```
+⚠️ digital-pm-mcp update available: v0.4.0 → v0.4.2
+   Restart with the latest: update your MCP config to use `npx digital-pm-mcp@latest`
+```
+
+**To update:** Since you installed with `npx digital-pm-mcp@latest`, just clear the npx cache and restart Claude Code:
+
+```bash
+# Clear npx cache (forces re-download of latest version)
+rm -rf ~/.npm/_npx
+
+# Then restart Claude Code — it will pull the latest automatically
+```
+
+This is the only thing you need to do. Your `.digitalpM.json` and NotebookLM notebook are preserved — only the server binary updates.
 
 ---
 
