@@ -8,6 +8,9 @@ All notable changes to `digital-pm-mcp` will be documented here.
 - **Version check at startup** — checks npm for a newer version on launch; if one exists, prepends an update banner to the first tool response of the session with exact upgrade instructions
 - **`src/services/version-check.js`** — lightweight checker using `fetch()` against the npm registry with a 5s timeout; never blocks startup
 - **Handler wrapper** in `index.js` — all 6 tool handlers auto-prepend the update banner without individual file changes
+- **`digitalPM_query` auto-retry** — if notebooklm-mcp returns an auth/session error, the query tool retries up to 3 times with a 2.5s delay before giving up; transient auth hiccups now recover silently instead of failing immediately
+- **Auth-failure detection in `callNotebookLM`** — tool-level failure JSON (`{"success":false,"error":"…"}`) returned by notebooklm-mcp is now detected and thrown as a real `Error` so the retry loop can catch and handle it
+- **Graceful degradation message** — when all retries fail, users get a clear, actionable message with the exact commands to re-authenticate (`npx notebooklm-mcp@latest` → `setup_auth`)
 
 ### Updated
 - README step 3 now reflects fully automated init (no manual notebook creation / paste step)
@@ -15,6 +18,7 @@ All notable changes to `digital-pm-mcp` will be documented here.
 
 ### Fixed
 - Version string in startup log now reads dynamically from `package.json` (no hardcoded string to forget)
+- Version string in MCP server declaration now matches `package.json` (was hardcoded to 0.4.1)
 - `createNotebook()` now skips the intermediate `/notebook/creating` URL when polling for the real UUID
 - `openAddSourcesDialog()` detects auto-open dialog on new empty notebooks (avoids clicking a blocked button)
 - `withNotebookPage()` adds 1.5s animation settle wait after page load

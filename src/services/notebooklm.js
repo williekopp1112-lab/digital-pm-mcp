@@ -86,10 +86,21 @@ export async function callNotebookLM(toolName, toolArgs) {
     if (toolResp.error) throw new Error(`tools/call error: ${JSON.stringify(toolResp.error)}`);
 
     const content = toolResp?.result?.content;
-    if (Array.isArray(content)) {
-      return content.filter(item => item.type === 'text').map(item => item.text).join('\n');
+    const text = Array.isArray(content)
+      ? content.filter(item => item.type === 'text').map(item => item.text).join('\n')
+      : JSON.stringify(toolResp?.result ?? toolResp);
+
+    // Detect tool-level auth failure returned as JSON text
+    // e.g. notebooklm-mcp returns: {"success":false,"error":"Failed to authenticate session"}
+    if (text.trim().startsWith('{')) {
+      let parsed;
+      try { parsed = JSON.parse(text.trim()); } catch { /* not JSON — continue */ }
+      if (parsed && parsed.success === false && typeof parsed.error === 'string') {
+        throw new Error(parsed.error);
+      }
     }
-    return JSON.stringify(toolResp?.result ?? toolResp);
+
+    return text;
 
   } finally {
     cleanup();

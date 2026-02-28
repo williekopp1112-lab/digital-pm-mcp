@@ -1,6 +1,15 @@
 import { readConfig, resolveProjectPath } from '../services/config.js';
 import { callNotebookLM } from '../services/notebooklm.js';
 
+const MAX_RETRIES    = 3;
+const RETRY_DELAY_MS = 2_500;
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function isAuthError(msg) {
+  return /auth|login|session|authenticate/i.test(msg);
+}
+
 export async function handleQuery({ question, project_path }) {
   const projectPath = resolveProjectPath(project_path);
   const config      = await readConfig(projectPath);
@@ -23,47 +32,70 @@ export async function handleQuery({ question, project_path }) {
     };
   }
 
-  try {
-    const answer = await callNotebookLM('ask_question', {
-      question,
-      notebook_url: config.notebook_url,
-    });
+  let lastErr = null;
 
-    return {
-      content: [{
-        type: 'text',
-        text: [
-          `## 🧠 Digital PM — ${config.project_name}`,
-          ``,
-          `**Q:** ${question}`,
-          ``,
-          `---`,
-          ``,
-          answer,
-        ].join('\n'),
-      }],
-    };
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const answer = await callNotebookLM('ask_question', {
+        question,
+        notebook_url: config.notebook_url,
+      });
 
-  } catch (err) {
-    const isAuthLikely = /auth|login|timeout|session/i.test(err.message);
-    return {
-      content: [{
-        type: 'text',
-        text: [
-          `## Query Failed`,
-          ``,
-          `**Error:** ${err.message}`,
-          ``,
-          isAuthLikely
-            ? [
-                `This looks like a **notebooklm-mcp authentication issue**. To fix:`,
-                `1. Run \`npx notebooklm-mcp@latest\` in a terminal`,
-                `2. Use the \`setup_auth\` tool to log in to Google`,
-                `3. Try \`digitalPM_query\` again`,
-              ].join('\n')
-            : `Check that \`notebooklm-mcp\` is installed and authenticated, then try again.`,
-        ].join('\n'),
-      }],
-    };
+      // Success — include retry info if we had to retry
+      const retryNote = attempt > 1 ? `\n> _(Succeeded on attempt ${attempt} of ${MAX_RETRIES})_\n` : '';
+      return {
+        content: [{
+          type: 'text',
+          text: [
+            `## 🧠 Digital PM — ${config.project_name}`,
+            retryNote,
+            `**Q:** ${question}`,
+            ``,
+            `---`,
+            ``,
+            answer,
+          ].join('\n'),
+        }],
+      };
+
+    } catch (err) {
+      lastErr = err;
+      const shouldRetry = isAuthError(err.message) && attempt < MAX_RETRIES;
+      process.stderr.write(
+        `[digital-pm-mcp] Query attempt ${attempt}/${MAX_RETRIES} failed: ${err.message}` +
+        (shouldRetry ? ` — retrying in ${RETRY_DELAY_MS}ms…\n` : '\n')
+      );
+      if (shouldRetry) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      break;
+    }
   }
+
+  // All attempts exhausted
+  const authIssue = isAuthError(lastErr.message);
+  return {
+    content: [{
+      type: 'text',
+      text: [
+        `## ⚠️ Digital PM Query Unavailable`,
+        ``,
+        `Failed after ${MAX_RETRIES} attempts: **${lastErr.message}**`,
+        ``,
+        authIssue
+          ? [
+              `This is a **notebooklm-mcp session issue**. Quick fix:`,
+              ``,
+              `\`\`\``,
+              `npx notebooklm-mcp@latest`,
+              `# then use the setup_auth tool to re-authenticate`,
+              `\`\`\``,
+              ``,
+              `Once re-authenticated, restart Claude Code and try again.`,
+            ].join('\n')
+          : `Make sure \`notebooklm-mcp\` is installed and your Google session is active, then try again.`,
+      ].join('\n'),
+    }],
+  };
 }
