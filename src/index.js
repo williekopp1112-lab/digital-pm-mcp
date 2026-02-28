@@ -28,7 +28,7 @@ function wrap(handler) {
 
 const server = new McpServer({
   name: 'digital-pm-mcp',
-  version: '0.4.3',
+  version: '0.4.4',
 });
 
 // ── digitalPM_init ────────────────────────────────────────────────────────────

@@ -2,6 +2,17 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.4.4] — 2026-02-28
+
+### Changed (Breaking internal architecture — no API change)
+- **`digitalPM_query` now uses native browser automation** — removed the `notebooklm-mcp` subprocess entirely from the query path; `callNotebookLM()` now delegates directly to a new `queryNotebook()` function in `browser-source.js`, which uses the same `launchPersistentContext` already proven reliable for `digitalPM_sync`. Auth is now unified: one Chrome profile, one code path, zero external processes.
+- **New `queryNotebook(question, notebookUrl)`** in `browser-source.js` — types the question into `textarea.query-box-input`, waits for `div.thinking-message` to clear, then polls `.to-user-container .message-text-content` for a new stable response (3 identical consecutive polls), mirroring notebooklm-mcp's own streaming detection algorithm
+
+### Removed
+- All subprocess infrastructure from `notebooklm.js`: `spawn`, JSON-RPC helpers, PATH augmentation — no longer needed for queries
+
+---
+
 ## [0.4.3] — 2026-02-28
 
 ### Fixed

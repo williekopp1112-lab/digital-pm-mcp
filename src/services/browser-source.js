@@ -10,6 +10,7 @@
  *   createNotebook()                             → creates a new notebook, returns its URL
  *   addTextSource(label, content, notebookUrl)   → "Copied text" source
  *   addUrlSources(urls, notebookUrl)             → "Websites" source (batched)
+ *   queryNotebook(question, notebookUrl)         → ask a question, return the AI response
  */
 
 import os   from 'os';
@@ -397,5 +398,114 @@ export async function addUrlSources(urls, notebookUrl) {
     });
 
     await page.waitForTimeout(2000);
+  });
+}
+
+// ── PUBLIC: Query the notebook chat ───────────────────────────────────────────
+
+/**
+ * Sends a question to the NotebookLM chat interface and returns the AI response.
+ * Uses the same authenticated launchPersistentContext as addTextSource/addUrlSources —
+ * no subprocess, no separate auth lifecycle, no session expiry surprises.
+ *
+ * Algorithm mirrors notebooklm-mcp's waitForLatestAnswer:
+ *  1. Snapshot existing responses so we know what to ignore
+ *  2. Type + Enter the question
+ *  3. Poll for new .to-user-container .message-text-content elements
+ *  4. Wait for div.thinking-message to clear, then require 3 stable polls
+ *
+ * @param {string} question    - The question to ask
+ * @param {string} notebookUrl - NotebookLM notebook URL
+ * @returns {Promise<string>}  - The AI response text
+ */
+export async function queryNotebook(question, notebookUrl) {
+  const POLL_MS      = 1_000;
+  const STABLE_POLLS = 3;
+  const QUERY_TIMEOUT = 120_000; // 2 minutes
+
+  return withNotebookPage(notebookUrl, async (page) => {
+    // ── Dismiss any blocking overlay (add-sources dialog auto-opens on new notebooks)
+    await dismissBlockingOverlay(page);
+
+    // ── 1. Snapshot existing responses to know what's already on the page ────
+    const existingTexts = new Set();
+    try {
+      const containers = await page.$$('.to-user-container');
+      for (const c of containers) {
+        try {
+          const el = await c.$('.message-text-content');
+          if (el) {
+            const text = (await el.innerText()).trim();
+            if (text) existingTexts.add(text);
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* no existing responses — that's fine */ }
+
+    process.stderr.write(
+      `[digital-pm-mcp] Asking NotebookLM (${existingTexts.size} prior response(s) to skip)…\n`
+    );
+
+    // ── 2. Type the question and submit with Enter ────────────────────────────
+    await page.click('textarea.query-box-input');
+    await page.fill('textarea.query-box-input', question);
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Enter');
+
+    // ── 3. Wait for new stable response ──────────────────────────────────────
+    // - Skip while div.thinking-message is visible (NotebookLM is still generating)
+    // - Poll .to-user-container .message-text-content for text not in existingTexts
+    // - Require STABLE_POLLS consecutive identical readings before returning
+    const deadline     = Date.now() + QUERY_TIMEOUT;
+    let lastCandidate  = null;
+    let stableCount    = 0;
+
+    while (Date.now() < deadline) {
+      // Wait while the "thinking" indicator is visible
+      try {
+        const thinking = await page.$('div.thinking-message');
+        if (thinking && await thinking.isVisible()) {
+          await page.waitForTimeout(POLL_MS);
+          continue;
+        }
+      } catch { /* ignore */ }
+
+      // Scan all response containers for NEW text (not in existingTexts)
+      let candidate = null;
+      try {
+        const containers = await page.$$('.to-user-container');
+        for (const c of containers) {
+          try {
+            const el = await c.$('.message-text-content');
+            if (el) {
+              const text = (await el.innerText()).trim();
+              // Take the LAST new container — it's the most recent response
+              if (text && !existingTexts.has(text)) candidate = text;
+            }
+          } catch { /* skip this container */ }
+        }
+      } catch { /* ignore page errors */ }
+
+      if (candidate) {
+        if (candidate === lastCandidate) {
+          stableCount++;
+          if (stableCount >= STABLE_POLLS) {
+            process.stderr.write(
+              `[digital-pm-mcp] ✅ NotebookLM response received (${candidate.length} chars)\n`
+            );
+            return candidate;
+          }
+        } else {
+          stableCount   = 1;
+          lastCandidate = candidate;
+        }
+      } else {
+        stableCount = 0;
+      }
+
+      await page.waitForTimeout(POLL_MS);
+    }
+
+    throw new Error('Timeout: NotebookLM did not respond within 2 minutes');
   });
 }
