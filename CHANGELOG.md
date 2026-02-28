@@ -2,6 +2,15 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.4.3] — 2026-02-28
+
+### Fixed
+- **`digitalPM_query` auto-retry on auth failure** — `callNotebookLM()` now detects `{"success":false,"error":"…"}` JSON returned by notebooklm-mcp and throws a real Error so the retry loop can catch it; `handleQuery()` retries up to 3× with a 2.5s gap on auth/session errors; transient session drops now self-heal silently
+- **Graceful degradation** when all retries fail — clean message with `npx notebooklm-mcp@latest → setup_auth` instructions instead of a raw JSON blob
+- Version string in MCP server declaration now matches `package.json`
+
+---
+
 ## [0.4.2] — 2026-02-28
 
 ### Added
