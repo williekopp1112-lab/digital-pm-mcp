@@ -11,7 +11,7 @@ import { handlePlan }     from './tools/plan.js';
 
 const server = new McpServer({
   name: 'digital-pm-mcp',
-  version: '0.4.0',
+  version: '0.4.1',
 });
 
 // ── digitalPM_init ────────────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ server.registerTool(
 async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write('[digital-pm-mcp] v0.4.0 started on stdio\n');
+  process.stderr.write('[digital-pm-mcp] v0.4.1 started on stdio\n');
 }
 
 runServer().catch((err) => {

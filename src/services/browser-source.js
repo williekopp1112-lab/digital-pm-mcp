@@ -2,7 +2,9 @@
  * browser-source.js
  *
  * Drives NotebookLM via browser automation (patchright).
- * Reuses the auth cookies already managed by notebooklm-mcp — no separate login needed.
+ * Uses launchPersistentContext with the notebooklm-mcp Chrome profile —
+ * the same authenticated profile the user already set up via notebooklm-mcp.
+ * If that profile is locked (concurrent use), clones it to an isolated temp dir.
  *
  * Exports:
  *   createNotebook()                             → creates a new notebook, returns its URL
@@ -15,28 +17,25 @@ import path  from 'path';
 import fs    from 'fs/promises';
 import { pathToFileURL } from 'url';
 
-// ── Auth state path (managed by notebooklm-mcp) ──────────────────────────────
+// ── Path helpers ──────────────────────────────────────────────────────────────
 
-function getNotebookLMStateDir() {
-  const platform = process.platform;
-  if (platform === 'darwin')  return path.join(os.homedir(), 'Library', 'Application Support', 'notebooklm-mcp', 'browser_state');
-  if (platform === 'win32')   return path.join(process.env.APPDATA || os.homedir(), 'notebooklm-mcp', 'browser_state');
-  return path.join(os.homedir(), '.local', 'share', 'notebooklm-mcp', 'browser_state');
+function getAppSupportDir() {
+  if (process.platform === 'darwin')  return path.join(os.homedir(), 'Library', 'Application Support');
+  if (process.platform === 'win32')   return process.env.APPDATA || os.homedir();
+  return path.join(os.homedir(), '.local', 'share');
 }
 
-async function loadBrowserState() {
-  const stateFile = path.join(getNotebookLMStateDir(), 'state.json');
-  try {
-    const raw = await fs.readFile(stateFile, 'utf8');
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+/** notebooklm-mcp's Chrome profile — already authenticated by the user */
+function getNotebookLMChromeProfile() {
+  return path.join(getAppSupportDir(), 'notebooklm-mcp', 'chrome_profile');
+}
+
+/** Where digital-pm-mcp stores its cloned isolated profile instances */
+function getDigitalPMInstancesDir() {
+  return path.join(getAppSupportDir(), 'digital-pm-mcp', 'chrome_profile_instances');
 }
 
 // ── Find patchright from local deps or notebooklm-mcp's npx cache ────────────
-// patchright is already installed by notebooklm-mcp — no separate browser
-// download needed. We try local node_modules first, then the npx cache.
 
 let _patchright = null;
 
@@ -73,36 +72,97 @@ async function getPatchright() {
   );
 }
 
-// ── Browser helper ────────────────────────────────────────────────────────────
+// ── Persistent context helper ─────────────────────────────────────────────────
+// Uses launchPersistentContext with the notebooklm-mcp Chrome profile.
+// If that profile is locked by another process, clones it into an isolated dir.
 
 const TIMEOUT = 30_000; // 30s per UI step
 
-async function withNotebookPage(notebookUrl, fn) {
-  const patchright  = await getPatchright();
-  const browserState = await loadBrowserState();
+const LAUNCH_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-blink-features=AutomationControlled',
+  '--disable-dev-shm-usage',
+  '--no-first-run',
+  '--no-default-browser-check',
+];
 
-  const launchOpts = {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+/**
+ * Returns an open persistent browser context and (if we created a temp clone)
+ * the path to the temp dir so it can be cleaned up after use.
+ *
+ * @returns {{ context: BrowserContext, tempDir: string|null }}
+ */
+async function openPersistentContext(headless = true) {
+  const patchright  = await getPatchright();
+  const baseProfile = getNotebookLMChromeProfile();
+
+  const launchOptions = {
+    headless,
+    args: LAUNCH_ARGS,
   };
 
-  const browser = await patchright.chromium.launch(launchOpts);
+  // First attempt: use the base notebooklm-mcp profile directly
+  try {
+    const context = await patchright.chromium.launchPersistentContext(baseProfile, launchOptions);
+    return { context, tempDir: null };
+  } catch (err) {
+    const isSingleton = /ProcessSingleton|SingletonLock|profile is already in use/i.test(
+      String(err?.message || err)
+    );
+    if (!isSingleton) throw err;
+
+    // Profile is locked — clone it into an isolated instance dir
+    process.stderr.write('[digital-pm-mcp] Chrome profile in use, cloning to isolated instance...\n');
+
+    const stamp      = `${process.pid}-${Date.now()}`;
+    const instancesDir = getDigitalPMInstancesDir();
+    const tempDir    = path.join(instancesDir, `instance-${stamp}`);
+
+    await fs.mkdir(tempDir, { recursive: true });
+
+    // Best-effort clone — skip lock/tmp files so Chrome can open the copy cleanly
+    try {
+      await fs.cp(baseProfile, tempDir, {
+        recursive:    true,
+        errorOnExist: false,
+        force:        true,
+        filter: (src) => {
+          const bn = path.basename(src);
+          return !/^Singleton/i.test(bn) && !bn.endsWith('.lock') && !bn.endsWith('.tmp');
+        },
+      });
+    } catch (cpErr) {
+      process.stderr.write(`[digital-pm-mcp] Profile clone warning: ${cpErr.message}\n`);
+      // Continue with the (possibly partial) clone
+    }
+
+    const context = await patchright.chromium.launchPersistentContext(tempDir, launchOptions);
+    return { context, tempDir };
+  }
+}
+
+// ── Browser helper ────────────────────────────────────────────────────────────
+
+async function withNotebookPage(notebookUrl, fn) {
+  const { context, tempDir } = await openPersistentContext();
 
   try {
-    // Create context — inject saved cookies/localStorage if available
-    const ctxOpts = browserState ? { storageState: browserState } : {};
-    const context  = await browser.newContext(ctxOpts);
-    const page     = await context.newPage();
+    const page = await context.newPage();
 
     // Navigate to notebook
     await page.goto(notebookUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
 
-    // Wait for the chat input to confirm we're authenticated and notebook is ready
+    // Wait for the chat input to confirm we're authenticated and the notebook is ready
     await page.waitForSelector('textarea.query-box-input', { timeout: TIMEOUT, state: 'visible' });
 
     return await fn(page);
   } finally {
-    await browser.close();
+    await context.close();
+    // Clean up isolated clone if we created one
+    if (tempDir) {
+      try { await fs.rm(tempDir, { recursive: true, force: true }); } catch {}
+    }
   }
 }
 
@@ -115,18 +175,10 @@ async function withNotebookPage(notebookUrl, fn) {
  * @returns {Promise<string>} The canonical URL of the newly created notebook
  */
 export async function createNotebook() {
-  const patchright   = await getPatchright();
-  const browserState = await loadBrowserState();
-
-  const browser = await patchright.chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const { context, tempDir } = await openPersistentContext();
 
   try {
-    const ctxOpts = browserState ? { storageState: browserState } : {};
-    const context  = await browser.newContext(ctxOpts);
-    const page     = await context.newPage();
+    const page = await context.newPage();
 
     // Navigate to the NotebookLM home page
     await page.goto('https://notebooklm.google.com/', {
@@ -186,7 +238,10 @@ export async function createNotebook() {
 
     return notebookUrl;
   } finally {
-    await browser.close();
+    await context.close();
+    if (tempDir) {
+      try { await fs.rm(tempDir, { recursive: true, force: true }); } catch {}
+    }
   }
 }
 
@@ -197,7 +252,7 @@ async function openAddSourcesDialog(page) {
   await page.waitForSelector('button[aria-label="Add source"]', { timeout: TIMEOUT, state: 'visible' });
   await page.click('button[aria-label="Add source"]');
 
-  // Wait for the dialog overlay
+  // Wait for the dialog overlay with source-type buttons
   await page.waitForSelector('.cdk-overlay-container button.drop-zone-icon-button', {
     timeout: TIMEOUT,
     state:   'visible',

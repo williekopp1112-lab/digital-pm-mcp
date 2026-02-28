@@ -2,6 +2,15 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.4.1] — 2026-02-27
+
+### Fixed
+- **Auth failure when adding NotebookLM sources** — switched from `storageState` cookie injection to `launchPersistentContext` using the notebooklm-mcp Chrome profile. Google binds auth to the full browser identity, not just cookies; injecting cookies into a fresh Chromium context always redirected to the Google sign-in page. Now reuses the same authenticated Chrome profile that notebooklm-mcp already set up
+- **Concurrent profile lock handling** — if notebooklm-mcp has the Chrome profile open simultaneously, digital-pm-mcp now clones it to an isolated temp directory (skipping lock files) and cleans up after the operation
+- Removed dependency on `browser_state/state.json` — persistent context auth is self-contained in the Chrome profile
+
+---
+
 ## [0.4.0] — 2026-02-27
 
 ### Added
