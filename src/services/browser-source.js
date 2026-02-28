@@ -156,6 +156,9 @@ async function withNotebookPage(notebookUrl, fn) {
     // Wait for the chat input to confirm we're authenticated and the notebook is ready
     await page.waitForSelector('textarea.query-box-input', { timeout: TIMEOUT, state: 'visible' });
 
+    // Allow Angular/Material animations to settle (new notebooks auto-open "Add sources" modal)
+    await page.waitForTimeout(1500);
+
     return await fn(page);
   } finally {
     await context.close();
@@ -216,13 +219,15 @@ export async function createNotebook() {
       );
     }
 
-    // Poll until the page URL becomes a /notebook/ URL
+    // Poll until the page URL becomes a real /notebook/<uuid> URL.
+    // NotebookLM briefly shows /notebook/creating as an intermediate URL
+    // before assigning the permanent UUID — skip that transient state.
     const deadline = Date.now() + TIMEOUT;
     let notebookUrl = null;
     while (Date.now() < deadline) {
       await page.waitForTimeout(500);
       const url = page.url();
-      if (url.includes('/notebook/')) {
+      if (url.includes('/notebook/') && !url.includes('/notebook/creating')) {
         notebookUrl = url.split('?')[0]; // strip any query params
         break;
       }
@@ -245,14 +250,51 @@ export async function createNotebook() {
   }
 }
 
+// ── Dismiss any blocking overlay (e.g. onboarding dialog on new notebooks) ────
+
+async function dismissBlockingOverlay(page) {
+  // Check if the cdk-overlay-backdrop is blocking interactions
+  const backdropVisible = await page.evaluate(() => {
+    const backdrop = document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
+    if (!backdrop) return false;
+    // Try to close any open dialog via its close button or by pressing Escape
+    const closeBtn = document.querySelector('.cdk-overlay-container button[aria-label="Close"]');
+    if (closeBtn) { closeBtn.click(); return true; }
+    return true; // backdrop exists but no close button — will press Escape
+  });
+
+  if (backdropVisible) {
+    // Press Escape to close modal dialogs
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(800);
+
+    // Wait for backdrop to disappear
+    try {
+      await page.waitForSelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing', {
+        timeout: 5000,
+        state:   'hidden',
+      });
+    } catch { /* backdrop may have already gone */ }
+  }
+}
+
 // ── Open the "Add sources" dialog ─────────────────────────────────────────────
 
 async function openAddSourcesDialog(page) {
-  // Click the "+ Add sources" button
-  await page.waitForSelector('button[aria-label="Add source"]', { timeout: TIMEOUT, state: 'visible' });
-  await page.click('button[aria-label="Add source"]');
+  // On newly created notebooks NotebookLM auto-opens the "Add sources" dialog,
+  // which puts up a backdrop that blocks the "Add source" sidebar button.
+  // Detect the backdrop: if it's present the dialog is already open.
+  const backdropPresent = await page.evaluate(() =>
+    !!document.querySelector('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing')
+  );
 
-  // Wait for the dialog overlay with source-type buttons
+  if (!backdropPresent) {
+    // Dialog is not open — click the "+ Add sources" button to open it
+    await page.waitForSelector('button[aria-label="Add source"]', { timeout: TIMEOUT, state: 'visible' });
+    await page.click('button[aria-label="Add source"]');
+  }
+
+  // Wait for the source-type buttons (Copied text, Websites, etc.)
   await page.waitForSelector('.cdk-overlay-container button.drop-zone-icon-button', {
     timeout: TIMEOUT,
     state:   'visible',
