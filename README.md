@@ -63,24 +63,42 @@ This means your notebook is genuinely grounded in the content — it can cite so
 
 ## Installation
 
-### 1. Install and authenticate notebooklm-mcp (one-time)
+### 1. Set up notebooklm-mcp and authenticate with Google (one-time)
+
+`digital-pm-mcp` reuses the Google auth that `notebooklm-mcp` manages. You need to set it up first:
 
 ```bash
-npx notebooklm-mcp@latest
-# Use the setup_auth tool to log in to your Google account
+# Add notebooklm-mcp to Claude Code (user-wide)
+claude mcp add --scope user notebooklm npx notebooklm-mcp@latest
 ```
 
-This handles all the browser auth that `digital-pm-mcp` will reuse.
+Then **restart Claude Code** and authenticate:
+
+```
+# Inside Claude Code, call:
+setup_auth
+```
+
+This opens a browser window for Google login. Complete it, then verify with `get_health` — you should see `authenticated: true`. You only do this once.
+
+---
 
 ### 2. Add digital-pm-mcp to Claude Code
 
 ```bash
-# For your current project only:
-claude mcp add digitalpm npx digital-pm-mcp@latest
-
-# Or user-wide (available in every project):
+# User-wide — available in every project (recommended)
 claude mcp add --scope user digitalpm npx digital-pm-mcp@latest
 ```
+
+**Restart Claude Code**, then run `/mcp` to confirm both servers show ✓ Connected:
+```
+notebooklm   ✓ Connected
+digitalpm    ✓ Connected
+```
+
+> If either shows ✗ Failed: run `claude mcp list` to check the command, or open Claude Code with `claude --debug` to see the startup error.
+
+---
 
 ### 3. Initialize for your project
 
