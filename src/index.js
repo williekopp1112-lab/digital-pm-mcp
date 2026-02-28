@@ -8,6 +8,8 @@ import { handleQuery }    from './tools/query.js';
 import { handleResearch } from './tools/research.js';
 import { handleFeedback } from './tools/feedback.js';
 import { handlePlan }     from './tools/plan.js';
+import { handleInsights } from './tools/insights.js';
+import { handleSchedule } from './tools/schedule.js';
 import { checkForUpdates, LOCAL_VERSION, withUpdateBanner } from './services/version-check.js';
 
 // ── Wrap any tool handler so the first response in a session includes
@@ -28,7 +30,7 @@ function wrap(handler) {
 
 const server = new McpServer({
   name: 'digital-pm-mcp',
-  version: '0.4.4',
+  version: '0.5.0',
 });
 
 // ── digitalPM_init ────────────────────────────────────────────────────────────
@@ -90,10 +92,10 @@ server.registerTool(
     description: [
       'Asks a product management question to your project\'s NotebookLM notebook.',
       '',
-      'Spawns notebooklm-mcp as a subprocess and routes the question to the notebook.',
+      'Uses native browser automation (same auth path as sync) — no external subprocess.',
       'The notebook_url is loaded automatically from .digitalpM.json.',
       '',
-      'Requires notebooklm-mcp to be authenticated.',
+      'Requires Google auth via notebooklm-mcp.',
       'If not authenticated, run: npx notebooklm-mcp@latest → setup_auth',
       '',
       'Example questions:',
@@ -119,7 +121,8 @@ server.registerTool(
       'Searches the web for competitive and market research on topics related to your project.',
       '',
       'Returns URLs with titles and descriptions ready to add as sources in NotebookLM.',
-      'Uses DuckDuckGo — no API key required.',
+      'Uses Tavily search API — requires TAVILY_API_KEY env var.',
+      'Free tier: 1,000 searches/month at https://app.tavily.com',
       '',
       'If topics is not provided, auto-reads research_topics from .digitalpM.json.',
       '',
@@ -189,6 +192,65 @@ server.registerTool(
     },
   },
   wrap(handlePlan)
+);
+
+// ── digitalPM_insights ────────────────────────────────────────────────────────
+server.registerTool(
+  'digitalPM_insights',
+  {
+    title: 'Strategic PM Briefing',
+    description: [
+      'Runs a single comprehensive query against your project\'s NotebookLM notebook',
+      'and returns a 5-section strategic digest — all in one browser session.',
+      '',
+      'Sections:',
+      '  1. Competitive Gaps      — top 3 gaps vs market alternatives',
+      '  2. Unmet User Demand     — top 3 capabilities users ask for most',
+      '  3. Technical Risk        — top 2 architectural risks before scaling',
+      '  4. #1 Priority (30 days) — single highest-impact action, justified',
+      '  5. Pivot Risk            — signals you\'re building in the wrong direction',
+      '',
+      'No parameters needed. Run before any planning session.',
+      'Run digitalPM_sync first if the notebook hasn\'t been updated recently.',
+    ].join('\n'),
+    inputSchema: {
+      project_path: z.string().optional().describe('Project root path. Defaults to cwd.'),
+    },
+  },
+  wrap(handleInsights)
+);
+
+// ── digitalPM_schedule ────────────────────────────────────────────────────────
+server.registerTool(
+  'digitalPM_schedule',
+  {
+    title: 'Schedule Autonomous Sync',
+    description: [
+      'Installs an autonomous background sync so the Digital PM notebook stays',
+      'current automatically — even when Claude is closed.',
+      '',
+      'On macOS: writes a launchd plist to ~/Library/LaunchAgents/ and loads it.',
+      'On other platforms: returns exact crontab instructions.',
+      '',
+      'Schedule options:',
+      '  digitalPM_schedule()                          — daily at 9am (default)',
+      '  digitalPM_schedule(interval="hourly")         — every hour',
+      '  digitalPM_schedule(interval="daily", hour=7)  — daily at 7am',
+      '  digitalPM_schedule(interval="weekly", hour=9) — every Monday at 9am',
+      '  digitalPM_schedule(disable=true)              — remove the scheduled job',
+      '',
+      'Requires TAVILY_API_KEY in your MCP config env for research syncs.',
+      'Schedule config is stored in .digitalpM.json alongside notebook_url.',
+    ].join('\n'),
+    inputSchema: {
+      interval:     z.enum(['hourly', 'daily', 'weekly']).optional().describe('Sync frequency. Default: "daily".'),
+      hour:         z.number().int().min(0).max(23).optional().describe('Hour to run (0-23). Default: 9.'),
+      mode:         z.enum(['code', 'research', 'both']).optional().describe('What to sync. Default: "both".'),
+      project_path: z.string().optional().describe('Project root path. Defaults to cwd.'),
+      disable:      z.boolean().optional().describe('Set true to remove the scheduled job.'),
+    },
+  },
+  wrap(handleSchedule)
 );
 
 // ── Start ─────────────────────────────────────────────────────────────────────

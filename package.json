@@ -1,10 +1,11 @@
 {
   "name": "digital-pm-mcp",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Digital twin product manager MCP server — populates NotebookLM with codebase summaries, market research, and user feedback so Claude Code can consult it as a senior PM.",
   "type": "module",
   "bin": {
-    "digital-pm-mcp": "bin/digital-pm-mcp.js"
+    "digital-pm-mcp":  "bin/digital-pm-mcp.js",
+    "digital-pm-sync": "bin/digital-pm-sync.js"
   },
   "main": "./src/index.js",
   "files": [

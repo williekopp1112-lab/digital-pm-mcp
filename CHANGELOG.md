@@ -2,6 +2,22 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.5.0] — 2026-02-28
+
+### Added
+- **`digitalPM_insights`** — one-shot strategic PM briefing: single browser session, 5-section digest (Competitive Gaps, Unmet User Demand, Technical Risk, #1 Priority for next 30 days, Pivot Risk). Run before any planning sprint.
+- **`digitalPM_schedule`** — autonomous background sync installer. On macOS: writes a launchd plist to `~/Library/LaunchAgents/` and loads it so the notebook syncs on schedule even when Claude is closed. On other platforms: returns exact crontab instructions. Supports hourly / daily / weekly intervals; schedule stored in `.digitalpM.json`.
+- **`bin/digital-pm-sync.js`** — standalone sync runner invoked by launchd/cron; accepts `[project-path] [--mode=code|research|both]`. Also exported as `digital-pm-sync` binary in `package.json`.
+
+### Changed
+- **`digitalPM_research` now uses Tavily** — replaced the brittle DuckDuckGo HTML scraper (bot-detected, unreliable) with the [Tavily](https://app.tavily.com) search API. Structured JSON results, no HTML parsing, no cookie juggling. Requires `TAVILY_API_KEY` env var (free tier: 1,000 searches/month). Add to MCP config: `"digital-pm-mcp": { "env": { "TAVILY_API_KEY": "tvly-..." } }`.
+- `digitalPM_query` description updated — no longer mentions notebooklm-mcp subprocess (removed in v0.4.4); now accurately describes native browser automation.
+
+### Breaking
+- **`TAVILY_API_KEY` required for research** — `digitalPM_research` and `digitalPM_sync --mode=research` now throw a clear error if the key is missing. Get a free key at https://app.tavily.com and add it to your MCP config env block.
+
+---
+
 ## [0.4.4] — 2026-02-28
 
 ### Changed (Breaking internal architecture — no API change)

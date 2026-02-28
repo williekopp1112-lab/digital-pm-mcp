@@ -31,11 +31,13 @@ No more generic AI answers. Your notebook becomes smarter every time you:
 
 | Say this to Claude Code | What fires | What happens |
 |---|---|---|
+| "Initialize my digital PM" | `digitalPM_init` | Analyzes the codebase and bootstraps the whole system |
 | "Sync my digital PM" | `digitalPM_sync` | Adds codebase summary + all .md files as NotebookLM sources |
 | "My user reported a bug with the dashboard widgets" | `digitalPM_feedback` | Logs it as a permanent source in your notebook |
-| "Research competitors for our new AI features via digital PM" | `digitalPM_research` | Adds research URLs as real Website sources (NotebookLM fetches full content) |
-| "What should I build next based on market research?" | `digitalPM_query` | Queries your notebook and combines the answer with Claude's code knowledge |
-| "Initialize my digital PM" | `digitalPM_init` | Analyzes the codebase and bootstraps the whole system |
+| "Research competitors for our new AI features via digital PM" | `digitalPM_research` | Adds research URLs as real Website sources via Tavily |
+| "What should I build next based on market research?" | `digitalPM_query` | Queries your notebook, combines the answer with Claude's code knowledge |
+| "Give me a strategic PM briefing" | `digitalPM_insights` | 5-section digest: gaps, unmet demand, risk, top priority, pivot signals |
+| "Schedule my digital PM to sync daily" | `digitalPM_schedule` | Installs a launchd job (macOS) or cron entry that syncs automatically |
 
 You never type the function names. Just talk to Claude naturally.
 
@@ -58,6 +60,7 @@ This means your notebook is genuinely grounded in the content — it can cite so
 - **Node.js 18+**
 - **A Google account** with [NotebookLM](https://notebooklm.google.com) access (free)
 - **[notebooklm-mcp](https://www.npmjs.com/package/notebooklm-mcp)** installed and authenticated (handles Google login)
+- **Tavily API key** (free tier — 1,000 searches/month) — required for `digitalPM_research` and research syncs. Get one at [app.tavily.com](https://app.tavily.com)
 
 ---
 
@@ -83,12 +86,26 @@ This opens a browser window for Google login. Complete it, then verify with `get
 
 ---
 
-### 2. Add digital-pm-mcp to Claude Code
+### 2. Add digital-pm-mcp to Claude Code (with Tavily key)
 
 ```bash
 # User-wide — available in every project (recommended)
 claude mcp add --scope user digitalpm npx digital-pm-mcp@latest
 ```
+
+Then add your Tavily API key to the MCP config. Edit `~/.claude.json` (or wherever your user-scoped MCP config lives) and add the `env` block:
+
+```json
+"digitalpm": {
+  "command": "npx",
+  "args": ["digital-pm-mcp@latest"],
+  "env": {
+    "TAVILY_API_KEY": "tvly-your-key-here"
+  }
+}
+```
+
+Get a free key at [app.tavily.com](https://app.tavily.com) — the free tier covers 1,000 searches/month, more than enough for ongoing project research.
 
 **Restart Claude Code**, then run `/mcp` to confirm both servers show ✓ Connected:
 ```
@@ -216,9 +233,10 @@ You get PM-grade guidance, grounded in your actual project
 "Sync my digital PM"                  → updates code snapshot + research
 "Sync digital PM — code only"         → re-analyzes codebase only
 "Research new topics: AI agent tools" → pulls fresh research
+"Schedule my PM to sync daily at 8am" → runs automatically, even when Claude is closed
 ```
 
-A good habit: sync after any significant feature ship, so the PM context stays current.
+A good habit: sync after any significant feature ship. Or set a schedule and forget about it — `digitalPM_schedule` installs a background job that keeps the notebook current automatically.
 
 ---
 
@@ -227,7 +245,8 @@ A good habit: sync after any significant feature ship, so the PM context stays c
 ```
 digital-pm-mcp/
 ├── bin/
-│   └── digital-pm-mcp.js        # CLI entry (npx target)
+│   ├── digital-pm-mcp.js        # CLI entry (npx target)
+│   └── digital-pm-sync.js       # Standalone sync runner (used by launchd/cron)
 ├── src/
 │   ├── index.js                  # MCP server, tool registration, stdio transport
 │   ├── tools/
@@ -235,12 +254,15 @@ digital-pm-mcp/
 │   │   ├── sync.js               # digitalPM_sync
 │   │   ├── query.js              # digitalPM_query
 │   │   ├── research.js           # digitalPM_research
-│   │   └── feedback.js           # digitalPM_feedback
+│   │   ├── feedback.js           # digitalPM_feedback
+│   │   ├── plan.js               # digitalPM_plan
+│   │   ├── insights.js           # digitalPM_insights  ← new in v0.5.0
+│   │   └── schedule.js           # digitalPM_schedule  ← new in v0.5.0
 │   └── services/
 │       ├── browser-source.js     # Patchright automation — adds real NotebookLM sources
 │       ├── notebooklm.js         # Public API: addTextSource(), addUrlSources(), callNotebookLM()
 │       ├── codebase.js           # Project analysis + summary generation
-│       ├── research.js           # DuckDuckGo search (no API key needed)
+│       ├── research.js           # Tavily search (requires TAVILY_API_KEY)
 │       └── config.js             # .digitalpM.json read/write
 └── package.json
 ```

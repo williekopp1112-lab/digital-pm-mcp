@@ -61,7 +61,7 @@ export async function handleResearch({ topics, project_path }) {
         sourceResults.push(`⚠️ URL sources failed: ${err.message}`);
       }
     } else {
-      sourceResults.push(`⚠️ No fetchable URLs found — DuckDuckGo may be rate-limiting. Try again in a few minutes.`);
+      sourceResults.push(`⚠️ No URLs found. Check that TAVILY_API_KEY is set in your MCP config.`);
     }
 
     // 2. Add structured research summary as "Copied text" source
@@ -86,7 +86,7 @@ export async function handleResearch({ topics, project_path }) {
 
   if (topicsWithNoResults.length > 0) {
     lines.push(`⚠️ No results for: ${topicsWithNoResults.map(t => `\`${t}\``).join(', ')}`);
-    lines.push(`   (DuckDuckGo may be rate-limiting — retry in a few minutes)`);
+    lines.push(`   Check that TAVILY_API_KEY is set correctly in your MCP config.`);
     lines.push('');
   }
 
