@@ -2,6 +2,19 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.3.2] — 2026-02-27
+
+### Added
+- `createNotebook()` in `browser-source.js` — navigates to notebooklm.google.com, clicks "New notebook", waits for the URL, returns the new notebook URL
+- `digitalPM_init` now fully zero-configuration: automatically creates the NotebookLM notebook AND adds the codebase summary in one step
+
+### Changed
+- `digitalPM_init` no longer requires any manual steps for new users — just say "Initialize my digital PM" and everything happens automatically
+- If auto-creation fails (e.g. auth issue), gracefully falls back to asking for a URL
+- Users with an existing notebook can still pass `notebook_url` to init (existing behavior preserved)
+
+---
+
 ## [0.3.1] — 2026-02-27
 
 ### Fixed

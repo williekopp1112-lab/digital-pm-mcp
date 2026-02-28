@@ -1,11 +1,12 @@
 /**
  * browser-source.js
  *
- * Adds sources directly to a NotebookLM notebook via browser automation (patchright).
+ * Drives NotebookLM via browser automation (patchright).
  * Reuses the auth cookies already managed by notebooklm-mcp — no separate login needed.
  *
- * Two source types:
- *   addTextSource(label, content, notebookUrl)  → "Copied text" source
+ * Exports:
+ *   createNotebook()                             → creates a new notebook, returns its URL
+ *   addTextSource(label, content, notebookUrl)   → "Copied text" source
  *   addUrlSources(urls, notebookUrl)             → "Websites" source (batched)
  */
 
@@ -100,6 +101,90 @@ async function withNotebookPage(notebookUrl, fn) {
     await page.waitForSelector('textarea.query-box-input', { timeout: TIMEOUT, state: 'visible' });
 
     return await fn(page);
+  } finally {
+    await browser.close();
+  }
+}
+
+// ── Create a new notebook ─────────────────────────────────────────────────────
+
+/**
+ * Navigates to the NotebookLM home page, clicks "New notebook",
+ * waits for the notebook to open, and returns its URL.
+ *
+ * @returns {Promise<string>} The canonical URL of the newly created notebook
+ */
+export async function createNotebook() {
+  const patchright   = await getPatchright();
+  const browserState = await loadBrowserState();
+
+  const browser = await patchright.chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+
+  try {
+    const ctxOpts = browserState ? { storageState: browserState } : {};
+    const context  = await browser.newContext(ctxOpts);
+    const page     = await context.newPage();
+
+    // Navigate to the NotebookLM home page
+    await page.goto('https://notebooklm.google.com/', {
+      waitUntil: 'domcontentloaded',
+      timeout:   TIMEOUT,
+    });
+
+    // Wait for the Angular SPA to finish rendering
+    await page.waitForTimeout(3000);
+
+    // Find and click the "New notebook" button — tolerant of UI variations
+    const clicked = await page.evaluate(() => {
+      const candidates = Array.from(
+        document.querySelectorAll('button, a, [role="button"], mat-card, .new-notebook-card')
+      );
+      const target = candidates.find(el => {
+        const text = (el.textContent || '').toLowerCase().trim();
+        const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+        return (
+          text === 'new notebook'         ||
+          text === 'create notebook'      ||
+          text === 'new'                  ||
+          aria.includes('new notebook')   ||
+          aria.includes('create notebook')
+        );
+      });
+      if (target) { target.click(); return true; }
+      return false;
+    });
+
+    if (!clicked) {
+      throw new Error(
+        'Could not find "New notebook" button on notebooklm.google.com. ' +
+        'Make sure notebooklm-mcp is authenticated (run setup_auth first).'
+      );
+    }
+
+    // Poll until the page URL becomes a /notebook/ URL
+    const deadline = Date.now() + TIMEOUT;
+    let notebookUrl = null;
+    while (Date.now() < deadline) {
+      await page.waitForTimeout(500);
+      const url = page.url();
+      if (url.includes('/notebook/')) {
+        notebookUrl = url.split('?')[0]; // strip any query params
+        break;
+      }
+    }
+
+    if (!notebookUrl) throw new Error('Timed out waiting for new notebook to open');
+
+    // Wait for the notebook to be fully loaded
+    await page.waitForSelector('textarea.query-box-input', {
+      timeout: TIMEOUT,
+      state:   'visible',
+    });
+
+    return notebookUrl;
   } finally {
     await browser.close();
   }

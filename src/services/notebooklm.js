@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
-import { addTextSource as _addTextSource, addUrlSources as _addUrlSources } from './browser-source.js';
+import { addTextSource as _addTextSource, addUrlSources as _addUrlSources, createNotebook as _createNotebook } from './browser-source.js';
 
 const HANDSHAKE_TIMEOUT_MS = 15_000;
 const TOOL_TIMEOUT_MS      = 120_000; // Browser automation can be slow
@@ -128,6 +128,21 @@ export async function addUrlSources(urls, notebookUrl) {
   process.stderr.write(`[digital-pm-mcp] Adding ${urls.length} URL source(s) to NotebookLM...\n`);
   await _addUrlSources(urls, notebookUrl);
   process.stderr.write(`[digital-pm-mcp] ✅ ${urls.length} URL source(s) added.\n`);
+}
+
+// ── Notebook creation (browser automation) ───────────────────────────────────
+
+/**
+ * Creates a new NotebookLM notebook and returns its URL.
+ * Used by digitalPM_init when no notebook URL is provided.
+ *
+ * @returns {Promise<string>} The URL of the newly created notebook
+ */
+export async function createNotebook() {
+  process.stderr.write('[digital-pm-mcp] Creating new NotebookLM notebook...\n');
+  const url = await _createNotebook();
+  process.stderr.write(`[digital-pm-mcp] ✅ Notebook created: ${url}\n`);
+  return url;
 }
 
 // ── Legacy alias (kept for any internal callers) ──────────────────────────────
