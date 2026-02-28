@@ -31,22 +31,27 @@ export async function handleResearch({ topics, project_path }) {
   // ── Search ───────────────────────────────────────────────────────────────
   const results = await searchTopics(resolvedTopics);
 
-  // ── Collect all URLs and format research markdown ────────────────────────
+  // ── Collect URLs — filter out DDG search pages (JS-rendered, NotebookLM can't fetch them) ──
   const allUrls = [];
   for (const { results: topicResults } of results) {
     for (const r of topicResults) {
-      if (r.url) allUrls.push(r.url);
+      if (r.url && !r.url.includes('duckduckgo.com')) {
+        allUrls.push(r.url);
+      }
     }
   }
+
+  const topicsWithResults   = results.filter(r => r.results.length > 0);
+  const topicsWithNoResults = results.filter(r => r.results.length === 0).map(r => r.topic);
+
   const researchMarkdown = formatResearchMarkdown(results, config?.project_name);
 
   // ── Push to NotebookLM as proper sources ─────────────────────────────────
-  const notebookUrl = config?.notebook_url ?? null;
+  const notebookUrl  = config?.notebook_url ?? null;
   const sourceResults = [];
 
   if (notebookUrl) {
-    // 1. Add each research URL as a "Websites" source — NotebookLM fetches the
-    //    full page content, giving the notebook real grounding in the sources.
+    // 1. Add real research URLs as "Websites" sources
     if (allUrls.length > 0) {
       try {
         await addUrlSources(allUrls, notebookUrl);
@@ -55,16 +60,19 @@ export async function handleResearch({ topics, project_path }) {
         process.stderr.write(`[digital-pm-mcp] URL source injection failed: ${err.message}\n`);
         sourceResults.push(`⚠️ URL sources failed: ${err.message}`);
       }
+    } else {
+      sourceResults.push(`⚠️ No fetchable URLs found — DuckDuckGo may be rate-limiting. Try again in a few minutes.`);
     }
 
-    // 2. Also add a research summary as a "Copied text" source — gives the
-    //    notebook a structured overview of what was found and why it matters.
-    try {
-      await addTextSource('Research Summary', researchMarkdown, notebookUrl);
-      sourceResults.push(`✅ **Research summary** added as Copied text source`);
-    } catch (err) {
-      process.stderr.write(`[digital-pm-mcp] Summary source injection failed: ${err.message}\n`);
-      sourceResults.push(`⚠️ Summary source failed: ${err.message}`);
+    // 2. Add structured research summary as "Copied text" source
+    if (topicsWithResults.length > 0) {
+      try {
+        await addTextSource('Research Summary', researchMarkdown, notebookUrl);
+        sourceResults.push(`✅ **Research summary** added as Copied text source`);
+      } catch (err) {
+        process.stderr.write(`[digital-pm-mcp] Summary source injection failed: ${err.message}\n`);
+        sourceResults.push(`⚠️ Summary source failed: ${err.message}`);
+      }
     }
   }
 
@@ -72,9 +80,15 @@ export async function handleResearch({ topics, project_path }) {
   const lines = [
     `## 🔬 Research Results`,
     ``,
-    `Found results for **${results.length}** topic(s) — **${allUrls.length}** sources discovered.`,
+    `Searched **${results.length}** topic(s) — **${allUrls.length}** fetchable sources found.`,
     ``,
   ];
+
+  if (topicsWithNoResults.length > 0) {
+    lines.push(`⚠️ No results for: ${topicsWithNoResults.map(t => `\`${t}\``).join(', ')}`);
+    lines.push(`   (DuckDuckGo may be rate-limiting — retry in a few minutes)`);
+    lines.push('');
+  }
 
   if (sourceResults.length > 0) {
     lines.push(`### NotebookLM Sources Added`);
@@ -85,7 +99,9 @@ export async function handleResearch({ topics, project_path }) {
     lines.push('');
   }
 
-  lines.push(`---`, ``, researchMarkdown);
+  if (topicsWithResults.length > 0) {
+    lines.push(`---`, ``, researchMarkdown);
+  }
 
   return { content: [{ type: 'text', text: lines.join('\n') }] };
 }
@@ -98,9 +114,13 @@ function formatResearchMarkdown(results, projectName) {
 
   for (const { topic, results: topicResults } of results) {
     parts.push(`### ${topic}`);
-    for (const r of topicResults) {
-      parts.push(`- **[${r.title}](${r.url})**`);
-      if (r.description) parts.push(`  ${r.description}`);
+    if (topicResults.length === 0) {
+      parts.push(`_No results found for this topic._`);
+    } else {
+      for (const r of topicResults) {
+        parts.push(`- **[${r.title}](${r.url})**`);
+        if (r.description) parts.push(`  ${r.description}`);
+      }
     }
     parts.push('');
   }

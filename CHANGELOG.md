@@ -2,6 +2,17 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.3.1] — 2026-02-27
+
+### Fixed
+- DuckDuckGo searches now initialize cookies first (GET to duckduckgo.com) before POST — fixes bot-detection blocks
+- Added GET fallback if POST returns no results
+- DDG fallback search URLs are no longer added as NotebookLM Website sources (they're JS-rendered pages NotebookLM can't fetch)
+- Research and sync tools now show a clear warning when DDG returns no results, instead of silently adding useless sources
+- `searchTopic()` returns an empty array on complete failure (was returning a DDG fallback URL)
+
+---
+
 ## [0.3.0] — 2026-02-27
 
 ### Changed

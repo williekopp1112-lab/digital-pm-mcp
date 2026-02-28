@@ -70,11 +70,11 @@ export async function handleSync({ project_path, mode = 'both' }) {
     if (topics.length > 0) {
       const researchResults = await searchTopics(topics);
 
-      // Collect all URLs and the summary
+      // Collect all URLs — filter out DDG search pages (JS-rendered, NotebookLM can't fetch them)
       const allUrls = [];
       for (const { results: topicResults } of researchResults) {
         for (const r of topicResults) {
-          if (r.url) allUrls.push(r.url);
+          if (r.url && !r.url.includes('duckduckgo.com')) allUrls.push(r.url);
         }
       }
       const researchMarkdown = formatResearchMarkdown(researchResults, config.project_name);
