@@ -258,6 +258,9 @@ async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(`[digital-pm-mcp] v${LOCAL_VERSION} started on stdio\n`); // LOCAL_VERSION reads package.json
+  if (!process.env.TAVILY_API_KEY) {
+    process.stderr.write(`[digital-pm-mcp] ⚠️  TAVILY_API_KEY not set — research tools disabled. Get a free key at https://app.tavily.com\n`);
+  }
   // Fire-and-forget npm version check — never blocks startup
   checkForUpdates().catch(() => {});
 }

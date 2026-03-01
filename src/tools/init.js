@@ -71,28 +71,33 @@ export async function handleInit({ project_path, notebook_url, description, rese
   // ── Step 5: Run market + competitive research ────────────────────────────────
   let researchResults = [];
   let researchUrlCount = 0;
+  const tavilyMissing = !process.env.TAVILY_API_KEY;
 
-  try {
-    researchResults = await searchTopics(resolvedTopics.slice(0, 8)); // cap at 8 topics for init
+  if (tavilyMissing) {
+    sourceResults.push(`⏭️ **Market research skipped** — TAVILY_API_KEY not configured (see setup note below)`);
+  } else {
+    try {
+      researchResults = await searchTopics(resolvedTopics.slice(0, 8)); // cap at 8 topics for init
 
-    const allUrls = researchResults
-      .flatMap(r => r.results)
-      .map(r => r.url)
-      .filter(url => url && !url.includes('duckduckgo.com'));
+      const allUrls = researchResults
+        .flatMap(r => r.results)
+        .map(r => r.url)
+        .filter(url => url && url.length > 0);
 
-    researchUrlCount = allUrls.length;
+      researchUrlCount = allUrls.length;
 
-    if (allUrls.length > 0) {
-      await addUrlSources(allUrls, targetNotebookUrl);
-      sourceResults.push(`✅ **${allUrls.length} market research URLs** added as Website sources`);
+      if (allUrls.length > 0) {
+        await addUrlSources(allUrls, targetNotebookUrl);
+        sourceResults.push(`✅ **${allUrls.length} market research URLs** added as Website sources`);
+      }
+
+      const researchMarkdown = formatResearchSummary(researchResults, projectName);
+      await addTextSource('Market & Competitive Research', researchMarkdown, targetNotebookUrl);
+      sourceResults.push(`✅ **Research summary** added as Copied text source`);
+    } catch (err) {
+      process.stderr.write(`[digital-pm-mcp] Research failed: ${err.message}\n`);
+      sourceResults.push(`⚠️ Research partially failed: ${err.message}`);
     }
-
-    const researchMarkdown = formatResearchSummary(researchResults, projectName);
-    await addTextSource('Market & Competitive Research', researchMarkdown, targetNotebookUrl);
-    sourceResults.push(`✅ **Research summary** added as Copied text source`);
-  } catch (err) {
-    process.stderr.write(`[digital-pm-mcp] Research failed: ${err.message}\n`);
-    sourceResults.push(`⚠️ Research partially failed: ${err.message}`);
   }
 
   // ── Step 6: Generate and write ROADMAP.md ───────────────────────────────────
@@ -155,6 +160,26 @@ export async function handleInit({ project_path, notebook_url, description, rese
         `- \`"What should I build next?"\` — strategic query to your NotebookLM PM`,
         ``,
         `**Research topics configured**: ${topicList}`,
+        ``,
+        ...(tavilyMissing ? [
+          `---`,
+          ``,
+          `### ⚠️ Action Required — Add Tavily API Key`,
+          ``,
+          `Market research and competitive intel are disabled until you set this up.`,
+          ``,
+          `**Get a free key** (1,000 searches/month):`,
+          `1. Go to **https://app.tavily.com** → sign up → copy your API key`,
+          `2. Add it to your MCP config env block:`,
+          `\`\`\`json`,
+          `"digitalpm": {`,
+          `  "command": "npx",`,
+          `  "args": ["digital-pm-mcp@latest"],`,
+          `  "env": { "TAVILY_API_KEY": "tvly-your-key-here" }`,
+          `}`,
+          `\`\`\``,
+          `3. Restart Claude Code, then run: **"Sync my digital PM"** to pull research`,
+        ] : []),
       ].filter(Boolean).join('\n'),
     }],
   };
