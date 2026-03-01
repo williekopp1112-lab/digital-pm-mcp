@@ -2,6 +2,14 @@
 
 All notable changes to `digital-pm-mcp` will be documented here.
 
+## [0.5.1] — 2026-02-28
+
+### Fixed
+- **`digitalPM_init` gracefully handles missing Tavily key** — research step is skipped (not errored) if `TAVILY_API_KEY` is not set; init response includes a dedicated setup block with exact copy-paste instructions
+- **Startup warning** — logs `⚠️ TAVILY_API_KEY not set` to stderr on launch so it's visible in `claude --debug`
+
+---
+
 ## [0.5.0] — 2026-02-28
 
 ### Added
